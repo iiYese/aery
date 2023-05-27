@@ -7,3 +7,5 @@ authors = ["iiYese iiyese@outlook.com"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bevy = "0.10"
+indexmap = "1.9.3"
