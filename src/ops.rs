@@ -59,7 +59,10 @@ pub trait BreadthFirst<E: Borrow<Entity>> {
     type Out;
     type OutMut;
     fn breadth_first<T: Relation>(&self, roots: impl IntoIterator<Item = E>) -> Self::Out;
-    fn breadth_frist_mut<T: Relation>(&self, roots: impl IntoIterator<Item = E>) -> Self::OutMut;
+    fn breadth_frist_mut<T: Relation>(
+        &mut self,
+        roots: impl IntoIterator<Item = E>,
+    ) -> Self::OutMut;
 }
 
 pub enum ControlFlow<T> {
