@@ -1,3 +1,4 @@
+use crate::Relations;
 use bevy::{
     ecs::{
         component::Component,
@@ -22,6 +23,11 @@ pub(crate) struct Participant<T: Relation> {
     pub _phantom: PhantomData<T>,
 }
 
+#[derive(WorldQuery)]
+pub struct Participates<R: Relation> {
+    filter: Or<(With<Participant<R>>, With<Root<R>>)>,
+}
+
 #[derive(Clone, Copy)]
 pub enum CleanupPolicy {
     Orphan,
@@ -30,10 +36,41 @@ pub enum CleanupPolicy {
     Total,
 }
 
+pub trait Relation: 'static + Send + Sync {
+    const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+    const EXCLUSIVE: bool = true;
+}
+
+#[derive(Component, Default)]
+pub(crate) struct Edges {
+    pub fosters: [HashMap<TypeId, IndexSet<Entity>>; 4],
+    pub targets: [HashMap<TypeId, IndexSet<Entity>>; 4],
+}
+
+type EdgeIter<'a> = std::iter::Flatten<
+    std::option::IntoIter<std::iter::Copied<indexmap::set::Iter<'a, bevy::prelude::Entity>>>,
+>;
+
+impl Edges {
+    pub(crate) fn iter_fosters<R: Relation>(&self) -> EdgeIter<'_> {
+        self.fosters[R::CLEANUP_POLICY as usize]
+            .get(&TypeId::of::<R>())
+            .map(|targets| targets.iter().copied())
+            .into_iter()
+            .flatten()
+    }
+
+    pub(crate) fn iter_targets<R: Relation>(&self) -> EdgeIter<'_> {
+        self.targets[R::CLEANUP_POLICY as usize]
+            .get(&TypeId::of::<R>())
+            .map(|targets| targets.iter().copied())
+            .into_iter()
+            .flatten()
+    }
+}
+
 pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
-    let Some(mut edges) = world
-        .get_mut::<Edges>(entity)
-    else {
+    let Some(mut edges) = world.get_mut::<Edges>(entity) else {
         return
     };
 
@@ -88,47 +125,4 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
                 .remove::<(Participant<R>, Root<R>)>();
         }
     }
-}
-
-pub trait Relation: 'static + Send + Sync {
-    const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-    const EXCLUSIVE: bool = true;
-}
-
-#[derive(Component, Default)]
-pub(crate) struct Edges {
-    pub fosters: [HashMap<TypeId, IndexSet<Entity>>; 4],
-    pub targets: [HashMap<TypeId, IndexSet<Entity>>; 4],
-}
-
-impl Edges {
-    pub(crate) fn iter_targets<R: Relation>(&self) -> impl '_ + Iterator<Item = Entity> {
-        self.targets[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
-            .map(|targets| targets.iter().copied())
-            .into_iter()
-            .flatten()
-    }
-}
-
-pub trait RelationSet {
-    type Filters: ReadOnlyWorldQuery;
-}
-
-#[derive(WorldQuery)]
-pub struct Participates<R: Relation> {
-    filter: Or<(With<Participant<R>>, With<Root<R>>)>,
-}
-
-impl<R: Relation> RelationSet for R {
-    type Filters = Participates<R>;
-}
-
-// TODO: All tuple
-impl<P0: RelationSet> RelationSet for (P0,) {
-    type Filters = (P0::Filters,);
-}
-
-impl<P0: RelationSet, P1: RelationSet> RelationSet for (P0, P1) {
-    type Filters = (P0::Filters, P1::Filters);
 }

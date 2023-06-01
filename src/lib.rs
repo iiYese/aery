@@ -20,6 +20,7 @@ mod tuple_traits;
 
 pub use ops::*;
 pub use relation::*;
+use tuple_traits::*;
 
 pub struct Aery;
 
