@@ -1,4 +1,4 @@
-use crate::Relations;
+use crate::ops::Relations;
 use bevy::{
     ecs::{
         component::Component,
@@ -45,6 +45,11 @@ pub trait Relation: 'static + Send + Sync {
 pub(crate) struct Edges {
     pub fosters: [HashMap<TypeId, IndexSet<Entity>>; 4],
     pub targets: [HashMap<TypeId, IndexSet<Entity>>; 4],
+}
+
+#[derive(WorldQuery)]
+pub struct EdgeWQ {
+    pub(crate) edges: &'static Edges,
 }
 
 type EdgeIter<'a> = std::iter::Flatten<

@@ -9,18 +9,16 @@ use bevy::{
     prelude::*,
     utils::{HashMap, HashSet},
 };
-use core::any::TypeId;
 
+use crate::relation::{refragment, CleanupPolicy, Edges, Participant, Relation, Root};
+
+use core::any::TypeId;
 use indexmap::IndexSet;
 use std::{collections::VecDeque, marker::PhantomData};
 
 pub mod ops;
 pub mod relation;
 mod tuple_traits;
-
-pub use ops::*;
-pub use relation::*;
-use tuple_traits::*;
 
 pub struct Aery;
 
