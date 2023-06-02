@@ -1,6 +1,12 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 
+pub mod ops;
+pub mod relation;
+mod tuple_traits;
+
+pub use tuple_traits::*;
+
 use bevy::{
     ecs::{
         query::{ReadOnlyWorldQuery, WorldQuery},
@@ -15,10 +21,6 @@ use crate::relation::{refragment, CleanupPolicy, Edges, Participant, Relation, R
 use core::any::TypeId;
 use indexmap::IndexSet;
 use std::{collections::VecDeque, marker::PhantomData};
-
-pub mod ops;
-pub mod relation;
-mod tuple_traits;
 
 pub struct Aery;
 

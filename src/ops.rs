@@ -53,6 +53,31 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
     }
 }
 
+/// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single relation
+/// or tuple of relation types. *Must appear in the second position of the outer most tuple to use
+/// relation operations.*
+/// # Example
+/// ```
+/// use bevy::prelude::*;
+/// use aery::*;
+///
+/// fn main() {
+///     App::new()
+///         .add_plugin(Aery)
+///         .add_system(sys)
+///         .run();
+/// }
+///
+/// #[derive(Component)]
+/// struct S;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn sys(query: Query<(&S, Relations<R>)>) {
+///     // ..
+/// }
+/// ```
 #[derive(WorldQuery)]
 pub struct Relations<R: RelationSet> {
     pub(crate) edges: EdgeWQ,
@@ -77,35 +102,40 @@ where
     _phantom: PhantomData<(T, E)>,
 }
 
-trait AeryQueryExt {
-    fn ops(&self) -> Ops<&Self>;
-    fn ops_mut(&mut self) -> Ops<&mut Self>;
-}
-
-impl<'w, 's, Q, F, R> AeryQueryExt for Query<'w, 's, (Q, Relations<R>), F>
-where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
-    R: RelationSet + Send + Sync,
-{
-    fn ops(&self) -> Ops<&Self> {
-        Ops {
-            left: self,
-            joins: PhantomData,
-            right: (),
-            traversal: (),
-        }
+mod sealed {
+    use super::*;
+    pub trait AeryQueryExt {
+        fn ops(&self) -> Ops<&Self>;
+        fn ops_mut(&mut self) -> Ops<&mut Self>;
     }
 
-    fn ops_mut(&mut self) -> Ops<&mut Self> {
-        Ops {
-            left: self,
-            joins: PhantomData,
-            right: (),
-            traversal: (),
+    impl<'w, 's, Q, F, R> AeryQueryExt for Query<'w, 's, (Q, Relations<R>), F>
+    where
+        Q: WorldQuery,
+        F: ReadOnlyWorldQuery,
+        R: RelationSet + Send + Sync,
+    {
+        fn ops(&self) -> Ops<&Self> {
+            Ops {
+                left: self,
+                joins: PhantomData,
+                right: (),
+                traversal: (),
+            }
+        }
+
+        fn ops_mut(&mut self) -> Ops<&mut Self> {
+            Ops {
+                left: self,
+                joins: PhantomData,
+                right: (),
+                traversal: (),
+            }
         }
     }
 }
+
+pub use sealed::*;
 
 pub trait BreadthFirst<E, I>
 where

@@ -141,6 +141,39 @@ where
     }
 }
 
+/*macro_rules! impl_joinable {
+    ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
+        impl<'a, $($P),*> Joinable<'a, { count!($($P )*) }> for ($($P,)*)
+        where
+            $($P: Joinable<'a, 1>,)*
+        {
+            type Out = ($(<$P as Joinable<'a, 1>>::Out,)*);
+
+            fn check(
+                ($($p,)*): &Self,
+                [$($e,)*]: [Entity; count!($($P )*)]
+            )
+                -> [bool; count!($($p )*)]
+            {
+                $(let [$v] = Joinable::check($p, [$e]); )*
+                [$($v,)*]
+            }
+
+            fn join(
+                ($($p,)*): &'a mut Self,
+                [$($e,)*]: [Entity; count!($($P )*)]
+            )
+                -> Self::Out
+            {
+                $(let $v = Joinable::join($p, [$e]); )*
+                ($($v,)*)
+            }
+        }
+    }
+}
+
+all_tuples!(impl_joinable, 2, 15, P, p, e, v);*/
+
 macro_rules! impl_joinable {
     ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
         impl<'a, P0, $($P),*> Joinable<'a, { 1 + count!($($P )*) }> for (P0, $($P,)*)
