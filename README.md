@@ -1,7 +1,38 @@
 ## Aery
->The nest of a bird on a cliff or a mountaintop
+Non-fragmenting (slight misnomer) ZST relations for Bevy.
 
-Non-fragmenting (slight misnomer) relations for Bevy.
+```rs
+use bevy::prelude::*;
+use aery::prelude::*;
+
+fn main() {
+    App::new()
+        .add_plugin(Aery)
+        .add_system(sys)
+        .run();
+}
+
+#[derive(Component)]
+struct A;
+
+#[derive(Component)]
+struct B;
+
+#[derive(Relation)]
+struct R0;
+
+#[derive(Relation)]
+struct R1;
+
+fn sys(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, roots: Query<Entity, RootOf<R1>>) {
+    left.ops()
+        .join::<R0>(&b)
+        .breadth_first::<R1>(roots.iter())
+        .for_each(|a, b| {
+            // ..
+        })
+}
+```
 
 ### What is supported:
 - ZST relations
@@ -13,6 +44,3 @@ Non-fragmenting (slight misnomer) relations for Bevy.
 - Fragmenting on target
 - Target querying
 - Implicit despawn cleanup
-
-### In future:
-- Non-ZST relations?

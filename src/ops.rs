@@ -13,6 +13,7 @@ type EdgeIter<'a> = std::iter::Flatten<
     std::option::IntoIter<std::iter::Copied<indexmap::set::Iter<'a, bevy::prelude::Entity>>>,
 >;
 
+/// Struct to track inner product iteration.
 pub struct EdgeProduct<'a, const N: usize> {
     pub(crate) base_iterators: [EdgeIter<'a>; N],
     pub(crate) live_iterators: [EdgeIter<'a>; N],
@@ -55,29 +56,7 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
 
 /// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single relation
 /// or tuple of relation types. *Must appear in the second position of the outer most tuple to use
-/// relation operations.*
-/// # Example
-/// ```
-/// use bevy::prelude::*;
-/// use aery::*;
-///
-/// fn main() {
-///     App::new()
-///         .add_plugin(Aery)
-///         .add_system(sys)
-///         .run();
-/// }
-///
-/// #[derive(Component)]
-/// struct S;
-///
-/// #[derive(Relation)]
-/// struct R;
-///
-/// fn sys(query: Query<(&S, Relations<R>)>) {
-///     // ..
-/// }
-/// ```
+/// relation operations.* See [`AeryQueryExt`] for how to use operations.
 #[derive(WorldQuery)]
 pub struct Relations<R: RelationSet> {
     pub(crate) edges: EdgeWQ,
@@ -85,6 +64,7 @@ pub struct Relations<R: RelationSet> {
     _phantom: PhantomData<R>,
 }
 
+/// Struct that is used to track metadata for relation operations.
 pub struct Ops<Left, Joins = (), Right = (), Traversal = ()> {
     left: Left,
     joins: PhantomData<Joins>,
@@ -92,6 +72,7 @@ pub struct Ops<Left, Joins = (), Right = (), Traversal = ()> {
     traversal: Traversal,
 }
 
+/// Struct that is used to track metadata for breadth first traversals.
 pub struct BreadthFirstTraversal<T, E, I>
 where
     T: Relation,
@@ -104,8 +85,13 @@ where
 
 mod sealed {
     use super::*;
+
+    /// Trait to turn a [`Query`] into an [`Ops`] struct so relation operations can be performed.
+    /// See [`Join`] and [`BreadthFirst`] for how to perform joins and traversals.
     pub trait AeryQueryExt {
+        /// Provides read only access to the left portion of the [`Query`] tuple.
         fn ops(&self) -> Ops<&Self>;
+        /// Provides mutable access to the left portion of the [`Query`] tuple.
         fn ops_mut(&mut self) -> Ops<&mut Self>;
     }
 
@@ -137,6 +123,42 @@ mod sealed {
 
 pub use sealed::*;
 
+/// Trait to implement the `breadth_first` functionality of the operations API. Any `T` in
+/// `breadth_first::<T>(roots)` must be present in the `Relations<(..)>` parameter of a query.
+/// See [`TrappedForEach`] and [`InnerForEach`] for looping and [`Join`] for performing joins.
+/// # Traversal order illustration:
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, RootOf<R>>) {
+///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a| {
+///         // ..
+///     })
+/// }
+/// ```
+///
+/// | entityid  | A | Root<R> |
+/// |-----------|---|---------|
+/// | 0         | _ | _       |
+///
+/// *Note:* `Root<_>` markers are automatically added and removed by the [`Set`], [`UnSet`] and
+/// [`CheckedDespawn`] commands. Roots of graphs are tracked for convenient traversing.
+///
+/// | entityid  | A | R |
+/// |-----------|---|---|
+/// | 1         | _ | 0 |
+/// | 2         | _ | 0 |
+/// | 3         | _ | 1 |
+/// | 4         | _ | 1 |
+/// | 5         | _ | 2 |
+/// | 6         | _ | 2 |
 pub trait BreadthFirst<E, I>
 where
     E: Borrow<Entity>,
@@ -165,6 +187,10 @@ where
     }
 }
 
+/// Trait to implement the `join` functionality of the operations API. Any `T` in `join::<T>(query)`
+/// must be present in the `Relations<(..)>` parameter of a query. The type of join performed is
+/// what's known as an "inner join". See [`InnerForEach`] for an illustration. See [`BreadthFirst`]
+/// for how to perform traversals.
 pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
@@ -192,6 +218,37 @@ where
     }
 }
 
+/// Control flow enum to allow continue and early return semantics for [`TrappedForEach`] and
+/// [`InnerForEach`].
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+/// #[derive(Component)]
+/// struct A {
+///     // ..
+/// }
+///
+/// #[derive(Component)]
+/// struct B {
+///     // ..
+/// }
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn predicate(a: &A, b: &B) -> bool {
+///     # true // amongus
+///     // ..
+/// }
+///
+/// fn sys(a: Query<(&A, Relations<R>)>, b: Query<&B>) {
+///     a.ops().join::<R>(&b).for_each(|a, b| {
+///         if predicate(a, b) {
+///             return ControlFlow::Exit;
+///         }
+///     })
+/// }
+/// ```
 pub enum ControlFlow {
     Continue,
     Exit,
@@ -203,6 +260,12 @@ impl From<()> for ControlFlow {
     }
 }
 
+/// For each trait to get around lending Iterators not being expressible with current GATs. When
+/// traversing diamonds or cycles references to the same entities components can be produced more
+/// than once which is why this problem cannot be solved with `unsafe`. So instead it is made so
+/// that params provided to the closure cannot escape the closure. Traversing without joins is a
+/// common usecase so this variation is distinct from [`InnerForEach`] to allow `1` arity closures.
+/// See [`ControlFlow`] for control flow options.
 pub trait TrappedForEach {
     type In<'i>;
     fn for_each<Func, Ret>(self, func: Func)
@@ -234,7 +297,11 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some((left, relations)) = queue.pop_front().and_then(|e| self.left.get(e).ok()) {
+        while let Some(entity) = queue.pop_front() {
+            let Ok((left, relations)) = self.left.get(entity) else {
+                continue
+            };
+
             for e in relations.edges.edges.iter_fosters::<T>() {
                 queue.push_back(e);
             }
@@ -269,9 +336,11 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some((left, relations)) =
-            queue.pop_front().and_then(|e| self.left.get_mut(e).ok())
-        {
+        while let Some(entity) = queue.pop_front() {
+            let Ok((left, relations)) = self.left.get_mut(entity) else {
+                continue
+            };
+
             for e in relations.edges.edges.iter_fosters::<T>() {
                 queue.push_back(e);
             }
@@ -283,6 +352,54 @@ where
     }
 }
 
+/// For each trait to loop through inner joins. Like [`TrappedForEach`] the parameters provided to
+/// the closure cannot escape the closure. This will give the caller only matched entities and skip
+/// over entities not present in a joined query. Any `.join::<T>(query)` call will result in an
+/// innner joined `for_each` call. See [`ControlFlow`] for control flow options.
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A(&'static str);
+///
+/// #[derive(Component)]
+/// struct B(&'static str);
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn sys(a: Query<(&A, Relations<R>)>, b: Query<&B>) {
+///     a.ops().join::<R>(&b).for_each(|a, b| {
+///         // ..
+///     })
+/// }
+/// ```
+/// **`a: Query<(&A, Relations<R>)>`:**
+///
+/// | entityid  | A     | R     |
+/// |-----------|-------|-------|
+/// | 0         | `"X"` | 2, 3  |
+/// | 1         | `"Y"` | 6     |
+///
+/// **`b: Query<&B>`:**
+///
+/// | entityid  | B         |
+/// |-----------|-----------|
+/// | 2         | `"foo"`   |
+/// | 3         | `"bar"`   |
+/// | 4         | `"_"`     |
+/// | 5         | `"_"`     |
+/// | 6         | `"bazz"`  |
+/// | 1         | `"_"`     |
+///
+/// **`a.ops().join(&b).for_each(|a, b| {})`:**
+///
+/// | a     | b         |
+/// |-------|-----------|
+/// | `"X"` | `"foo"`   |
+/// | `"X"` | `"bar"`   |
+/// | `"Y"` | `"bazz"`  |
 pub trait InnerForEach<const N: usize> {
     type Left<'l>;
     type Right<'r>;
@@ -390,15 +507,18 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some((mut left, relations)) =
-            queue.pop_front().and_then(|e| self.left.get(e).ok())
-        {
+        while let Some(entity) = queue.pop_front() {
+            let Ok((mut left, relations)) = self.left.get(entity) else {
+                continue
+            };
+
             for e in relations.edges.edges.iter_fosters::<T>() {
                 queue.push_back(e);
             }
 
             let mut edge_product = Joins::product(relations.edges);
             let mut matches = [true; N];
+
             while let Some(entities) = edge_product.advance(matches) {
                 matches = Joinable::check(&self.right, entities);
 
@@ -447,15 +567,18 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some((mut left, relations)) =
-            queue.pop_front().and_then(|e| self.left.get_mut(e).ok())
-        {
+        while let Some(entity) = queue.pop_front() {
+            let Ok((mut left, relations)) = self.left.get_mut(entity) else {
+                continue
+            };
+
             for e in relations.edges.edges.iter_fosters::<T>() {
                 queue.push_back(e);
             }
 
             let mut edge_product = Joins::product(relations.edges);
             let mut matches = [true; N];
+
             while let Some(entities) = edge_product.advance(matches) {
                 matches = Joinable::check(&self.right, entities);
 
