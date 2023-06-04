@@ -125,9 +125,9 @@ pub use sealed::*;
 
 /// Trait to implement the `breadth_first` functionality of the operations API. Any `T` in
 /// `breadth_first::<T>(roots)` must be present in the `Relations<(..)>` parameter of a query.
-/// Traversal goes from traget -> foster. This is opposite to the join direction and the reason for
-/// this is that diamonds are impossible with `Exclusive` relations where the edges face bottom up
-/// instead of top down. See [`Join`] for performing joins.
+/// Diamonds are impossible with `Exclusive` relations where the edges face bottom up instead of
+/// top down so this the only type of hierarchy supported. Any other patern will not be recognised
+/// for traversal. See [`Join`] for performing joins.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -212,9 +212,9 @@ where
 
 /// Trait to implement the `join` functionality of the operations API. Any `T` in `join::<T>(query)`
 /// must be present in the `Relations<(..)>` parameter of a query. The type of join performed is
-/// what's known as an "inner join" which provides permutations of all matched entiteis. Joins go
-/// from foster -> target. The presence of any join operation will make the `for_each` closure 2
-/// arity instead of 1 where the 2nd parameter is a tuple of components from matched entities.
+/// what's known as an "inner join" which produces permutations of all matched entiteis.
+/// The presence of any join operation will make the `for_each` closure 2 arity instead of 1 where
+/// the 2nd parameter is a tuple of components from matched entities.
 /// See [`BreadthFirst`] for how to perform traversals.
 /// # Illustration:
 /// ```
