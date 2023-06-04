@@ -569,3 +569,46 @@ impl Command for CheckedDespawn {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{prelude::*, relation::Edges};
+    use bevy::{ecs::system::Command, prelude::*};
+    use core::any::TypeId;
+    use std::array::from_fn;
+
+    struct R;
+
+    impl Relation for R {}
+
+    fn assert_targets<R: Relation>(world: &World, foster: Entity, target: Entity) {
+        world
+            .get::<Edges>(foster)
+            .expect("Foster has no edges")
+            .targets[R::CLEANUP_POLICY as usize]
+            .get(&TypeId::of::<R>())
+            .expect("Foster has no bucket entry for R")
+            .get(&target)
+            .expect("Foster does not target entity");
+
+        world
+            .get::<Edges>(target)
+            .expect("Target has no edges")
+            .fosters[R::CLEANUP_POLICY as usize]
+            .get(&TypeId::of::<R>())
+            .expect("Target has no bucket entry for R")
+            .get(&foster)
+            .expect("Target is not fostered");
+    }
+
+    #[test]
+    fn set() {
+        App::new()
+            .add_plugin(Aery)
+            .add_startup_system(|world: &mut World| {
+                let [foster, target] = from_fn(|_| world.spawn_empty().id());
+                Command::write(Set::<R>::new(foster, target), world);
+                assert_targets::<R>(world, foster, target);
+            });
+    }
+}

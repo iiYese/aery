@@ -50,7 +50,6 @@ pub mod prelude {
             AeryQueryExt, BreadthFirst, ControlFlow, InnerForEach, Join, Relations, TrappedForEach,
         },
         relation::{CheckedDespawn, Participates, Relation, Root, Set, Unset},
-        tuple_traits::*,
         Aery,
     };
 }

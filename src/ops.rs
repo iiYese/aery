@@ -28,13 +28,13 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
             .find_map(|(n, matches)| (!matches).then_some(n))
             .unwrap_or(N);
 
-        for i in (n..N).skip(1) {
+        for i in (1..N).skip(n) {
             self.live_iterators[i] = self.base_iterators[i].clone();
             self.entities[i] = self.live_iterators[i].next();
         }
 
         'l: {
-            for i in (0..n).skip(1).rev() {
+            for i in (1..N).take(n).rev() {
                 if let Some(entity) = self.live_iterators[i].next() {
                     self.entities[i] = Some(entity);
                     break 'l;
