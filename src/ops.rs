@@ -54,9 +54,9 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
     }
 }
 
-/// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single relation
-/// or tuple of relation types. *Must appear in the second position of the outer most tuple to use
-/// relation operations.* See [`AeryQueryExt`] for how to use operations.
+/// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single
+/// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
+/// to use relation operations.* See [`AeryQueryExt`] for how to use operations.
 #[derive(WorldQuery)]
 pub struct Relations<R: RelationSet> {
     pub(crate) edges: EdgeWQ,
@@ -125,8 +125,10 @@ pub use sealed::*;
 
 /// Trait to implement the `breadth_first` functionality of the operations API. Any `T` in
 /// `breadth_first::<T>(roots)` must be present in the `Relations<(..)>` parameter of a query.
-/// See [`TrappedForEach`] and [`InnerForEach`] for looping and [`Join`] for performing joins.
-/// # Traversal order illustration:
+/// Traversal goes from traget -> foster. This is opposite to the join direction and the reason for
+/// this is that diamonds are impossible with `Exclusive` relations where the edges face bottom up
+/// instead of top down. See [`Join`] for performing joins.
+/// # Illustration:
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
@@ -137,12 +139,33 @@ pub use sealed::*;
 /// #[derive(Relation)]
 /// struct R;
 ///
+/// fn setup(mut commands: Commands) {
+///     let [e0, e1, e2, e3, e3, e5, e6] = std::array::from_fn(|_| commands.spawn().id());
+///
+///     [(e1, e0), (e2, e0), (e3, e1), (e4, e1), (e5, e2), (e6, e2)]
+///         .into_iter()
+///         .map(|(from, to)| Set { foster: from, target: to })
+///         .for_each(|set| commands.add(set));
+///
+///     //  Will construct the following graph:
+///     //
+///     //        0
+///     //       / \
+///     //      /   \
+///     //     /     \
+///     //    1       2
+///     //   / \     / \
+///     //  3   4   5   6
+/// }
+///
 /// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, RootOf<R>>) {
 ///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a| {
-///         // ..
+///         // Will traverse in the following order:
+///         // 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6
 ///     })
 /// }
 /// ```
+/// Resulting Archetypes/Tables:
 ///
 /// | entityid  | A | Root<R> |
 /// |-----------|---|---------|
@@ -189,8 +212,91 @@ where
 
 /// Trait to implement the `join` functionality of the operations API. Any `T` in `join::<T>(query)`
 /// must be present in the `Relations<(..)>` parameter of a query. The type of join performed is
-/// what's known as an "inner join". See [`InnerForEach`] for an illustration. See [`BreadthFirst`]
-/// for how to perform traversals.
+/// what's known as an "inner join" which provides permutations of all matched entiteis. Joins go
+/// from foster -> target. The presence of any join operation will make the `for_each` closure 2
+/// arity instead of 1 where the 2nd parameter is a tuple of components from matched entities.
+/// See [`BreadthFirst`] for how to perform traversals.
+/// # Illustration:
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A(&'static str);
+///
+/// #[derive(Component)]
+/// struct B(&'static str);
+///
+/// #[derive(Component)]
+/// struct C(&'static str);
+///
+/// #[derive(Relation)]
+/// struct R0;
+///
+/// struct R1;
+///
+/// impl Relation for R1 {
+///     const EXCLUSIVE: bool = false;
+/// }
+///
+/// fn sys(a: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
+///     a.ops()
+///         .join::<R0>(&b)
+///         .join::<R1>(&c)
+///         .for_each(|a, (b, c)| {
+///             // stuff
+///         })
+///
+///     //  If we used the "Entity in Component" pattern the equivalent without Aery would be:
+///     //  for (a, r0s, r1s) in &a {
+///     //      for r0 in r0s {
+///     //          let Ok(b) = b.get(*r0) else {
+///     //              continue
+///     //          };
+///     //
+///     //          for r1 in r1s {
+///     //              let Ok(c) = c.get(*r1) else {
+///     //                  continue
+///     //              };
+///     //
+///     //              // stuff
+///     //
+///     //          }
+///     //      }
+///     //  }
+/// }
+/// ```
+/// **If `a: Query<(&A, Relations<(R0, R1)>)>`:**
+///
+/// | entityid  | A     | R0    | R1        |
+/// |-----------|-------|-------|-----------|
+/// | 0         | `"X"` | 3     | 6, 10, 7  |
+/// | 1         | `"Y"` | 4     | 5, 6      |
+/// | 2         | `"Z"` | 5     | 9         |
+///
+/// **and `b: Query<&B>`:**
+///
+/// | entityid  | B             |
+/// |-----------|---------------|
+/// | 3         | `"foo"`       |
+/// | 5         | `"bar"`       |
+///
+/// **and `c: Query<&C>`:**
+///
+/// | entityid  | C             |
+/// |-----------|---------------|
+/// | 6         | `"baz"`       |
+/// | 7         | `"qux"`       |
+/// | 8         | `"corge"`     |
+/// | 9         | `"grault"`    |
+///
+/// **then `a.ops().join::<R0>(&b).join::<R1>(&c).for_each(|a, (b, c)| {})`:**
+///
+/// | a     | b         | c         |
+/// |-------|-----------|-----------|
+/// | `"X"` | `"foo"`   | "baz"     |
+/// | `"X"` | `"foo"`   | "qux"     |
+/// | `"Z"` | `"bar"`   | "grault"  |
 pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
@@ -356,50 +462,6 @@ where
 /// the closure cannot escape the closure. This will give the caller only matched entities and skip
 /// over entities not present in a joined query. Any `.join::<T>(query)` call will result in an
 /// innner joined `for_each` call. See [`ControlFlow`] for control flow options.
-/// ```
-/// use bevy::prelude::*;
-/// use aery::prelude::*;
-///
-/// #[derive(Component)]
-/// struct A(&'static str);
-///
-/// #[derive(Component)]
-/// struct B(&'static str);
-///
-/// #[derive(Relation)]
-/// struct R;
-///
-/// fn sys(a: Query<(&A, Relations<R>)>, b: Query<&B>) {
-///     a.ops().join::<R>(&b).for_each(|a, b| {
-///         // ..
-///     })
-/// }
-/// ```
-/// **`a: Query<(&A, Relations<R>)>`:**
-///
-/// | entityid  | A     | R     |
-/// |-----------|-------|-------|
-/// | 0         | `"X"` | 2, 3  |
-/// | 1         | `"Y"` | 6     |
-///
-/// **`b: Query<&B>`:**
-///
-/// | entityid  | B         |
-/// |-----------|-----------|
-/// | 2         | `"foo"`   |
-/// | 3         | `"bar"`   |
-/// | 4         | `"_"`     |
-/// | 5         | `"_"`     |
-/// | 6         | `"bazz"`  |
-/// | 1         | `"_"`     |
-///
-/// **`a.ops().join(&b).for_each(|a, b| {})`:**
-///
-/// | a     | b         |
-/// |-------|-----------|
-/// | `"X"` | `"foo"`   |
-/// | `"X"` | `"bar"`   |
-/// | `"Y"` | `"bazz"`  |
 pub trait InnerForEach<const N: usize> {
     type Left<'l>;
     type Right<'r>;
