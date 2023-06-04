@@ -136,15 +136,16 @@ pub use sealed::*;
 /// #[derive(Component)]
 /// struct A;
 ///
-/// #[derive(Relation)]
 /// struct R;
 ///
+/// impl Relation for R {}
+///
 /// fn setup(mut commands: Commands) {
-///     let [e0, e1, e2, e3, e3, e5, e6] = std::array::from_fn(|_| commands.spawn().id());
+///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| commands.spawn_empty().id());
 ///
 ///     [(e1, e0), (e2, e0), (e3, e1), (e4, e1), (e5, e2), (e6, e2)]
 ///         .into_iter()
-///         .map(|(from, to)| Set { foster: from, target: to })
+///         .map(|(from, to)| Set::<R>::new(from, to))
 ///         .for_each(|set| commands.add(set));
 ///
 ///     //  Will construct the following graph:
@@ -158,7 +159,7 @@ pub use sealed::*;
 ///     //  3   4   5   6
 /// }
 ///
-/// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, RootOf<R>>) {
+/// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
 ///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a| {
 ///         // Will traverse in the following order:
 ///         // 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6
@@ -230,8 +231,9 @@ where
 /// #[derive(Component)]
 /// struct C(&'static str);
 ///
-/// #[derive(Relation)]
 /// struct R0;
+///
+/// impl Relation for R0 {}
 ///
 /// struct R1;
 ///
@@ -339,8 +341,9 @@ where
 ///     // ..
 /// }
 ///
-/// #[derive(Relation)]
 /// struct R;
+///
+/// impl Relation for R {}
 ///
 /// fn predicate(a: &A, b: &B) -> bool {
 ///     # true // amongus
@@ -352,6 +355,10 @@ where
 ///         if predicate(a, b) {
 ///             return ControlFlow::Exit;
 ///         }
+///
+///         // () impls Into<ControlFlow> for convenience. Return types still need to be the same
+///         // so providing this is nessecary when doing any controlflow manipulation.
+///         ControlFlow::Continue
 ///     })
 /// }
 /// ```

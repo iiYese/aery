@@ -13,35 +13,47 @@ use core::any::TypeId;
 use indexmap::IndexSet;
 use std::{collections::VecDeque, marker::PhantomData};
 
-/// Only tracked for relations with recursive cleanup.
 #[derive(Component)]
-pub(crate) struct Root<T: Relation> {
-    pub _phantom: PhantomData<T>,
+pub(crate) struct RootMarker<R: Relation> {
+    pub _phantom: PhantomData<R>,
 }
 
 #[derive(Component)]
-pub(crate) struct Participant<T: Relation> {
-    pub _phantom: PhantomData<T>,
+pub(crate) struct Participant<R: Relation> {
+    pub _phantom: PhantomData<R>,
 }
 
+/// Filter to find roots of a relationship graph.
 #[derive(WorldQuery)]
-pub struct RootOf<R: Relation> {
-    filter: With<Root<R>>,
+pub struct Root<R: Relation> {
+    filter: With<RootMarker<R>>,
 }
 
+/// Filter to find any participants of a relationship.
 #[derive(WorldQuery)]
 pub struct Participates<R: Relation> {
-    filter: Or<(With<Participant<R>>, With<Root<R>>)>,
+    filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
 }
 
+/// Supported cleanup patterns. Cleanup is triggered when the entities participating in a
+/// relationship change. Ie.
+/// - When an entity is despawned
+/// - When the relation is removed
 #[derive(Clone, Copy)]
 pub enum CleanupPolicy {
+    /// Will do no further cleanup.
     Orphan,
+    /// Counted relationships "count" the number of fosters they have. If it ever reaches zero they
+    /// will delete themselves. This is effectively reference counting.
     Counted,
+    /// When targets of recursively cleaning relations are deleted they also delete all their
+    /// fosters. Unsetting a recursively cleaning relation is the same as despawning the foster.
     Recursive,
+    /// Total performs both counted and recursive cleanup.
     Total,
 }
 
+/// The relation trait. This is what controls the cleanup policy and exclusivity of a relation.
 pub trait Relation: 'static + Send + Sync {
     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
     const EXCLUSIVE: bool = true;
@@ -117,7 +129,7 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
         (_, true) => {
             world
                 .entity_mut(entity)
-                .remove::<Root<R>>()
+                .remove::<RootMarker<R>>()
                 .insert(Participant::<R> {
                     _phantom: PhantomData,
                 });
@@ -126,14 +138,14 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
             world
                 .entity_mut(entity)
                 .remove::<Participant<R>>()
-                .insert(Root::<R> {
+                .insert(RootMarker::<R> {
                     _phantom: PhantomData,
                 });
         }
         (false, false) => {
             world
                 .entity_mut(entity)
-                .remove::<(Participant<R>, Root<R>)>();
+                .remove::<(Participant<R>, RootMarker<R>)>();
         }
     }
 }
@@ -143,13 +155,24 @@ pub(crate) struct RefragmentHooks {
     hooks: HashMap<TypeId, fn(&mut World, Entity)>,
 }
 
+/// Command to set relationships between entities. Use convenience function [`set`].
 pub struct Set<R>
 where
     R: Relation,
 {
     pub foster: Entity,
     pub target: Entity,
-    pub relation: R,
+    pub _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Set<R> {
+    pub fn new(foster: Entity, target: Entity) -> Self {
+        Set {
+            foster,
+            target,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R> Command for Set<R>
@@ -188,7 +211,7 @@ where
             .insert(self.foster);
 
         if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&TypeId::of::<R>()) {
-            world.entity_mut(self.target).insert(Root::<R> {
+            world.entity_mut(self.target).insert(RootMarker::<R> {
                 _phantom: PhantomData,
             });
         }
@@ -197,7 +220,7 @@ where
 
         let mut foster_edges = world
             .entity_mut(self.foster)
-            .remove::<Root<R>>()
+            .remove::<RootMarker<R>>()
             .get_mut::<Edges>()
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
@@ -232,6 +255,7 @@ where
     }
 }
 
+/// Command to remove relationships between entities.
 pub struct Unset<R>
 where
     R: Relation,
@@ -382,6 +406,8 @@ impl Command for UnsetErased {
     }
 }
 
+/// Command to despawn entities with rleations. Despawning via any other method can lead to
+/// dangling which will not produce correct behavior!
 pub struct CheckedDespawn {
     pub entity: Entity,
 }

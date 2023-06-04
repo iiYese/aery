@@ -22,13 +22,15 @@
 //! #[derive(Component)]
 //! struct B;
 //!
-//! #[derive(Relation)]
 //! struct R0;
 //!
-//! #[derive(Relation)]
+//! impl Relation for R0 {}
+//!
 //! struct R1;
 //!
-//! fn sys(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, roots: Query<Entity, RootOf<R1>>) {
+//! impl Relation for R1 {}
+//!
+//! fn sys(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, roots: Query<Entity, Root<R1>>) {
 //!     left.ops()
 //!         .join::<R0>(&b)
 //!         .breadth_first::<R1>(roots.iter())
@@ -44,8 +46,10 @@ mod tuple_traits;
 
 pub mod prelude {
     pub use crate::{
-        ops::{AeryQueryExt, BreadthFirst, InnerForEach, Join, Relations, TrappedForEach},
-        relation::{CheckedDespawn, Participates, Relation, RootOf, Set, Unset},
+        ops::{
+            AeryQueryExt, BreadthFirst, ControlFlow, InnerForEach, Join, Relations, TrappedForEach,
+        },
+        relation::{CheckedDespawn, Participates, Relation, Root, Set, Unset},
         tuple_traits::*,
         Aery,
     };
