@@ -852,6 +852,69 @@ mod tests {
 
             test
         }
+
+        fn assert_unchanged(&self, world: &World) {
+            assert!(targeting::<Orphan>(world, self.fosters.orphan, self.center));
+            assert!(targeting::<Orphan>(world, self.center, self.targets.orphan));
+            assert!(is_participant::<Orphan>(world, self.fosters.orphan,));
+            assert!(is_root::<Orphan>(world, self.targets.orphan));
+
+            assert!(targeting::<Counted>(
+                world,
+                self.fosters.counted,
+                self.center
+            ));
+            assert!(targeting::<Counted>(
+                world,
+                self.center,
+                self.targets.counted
+            ));
+            assert!(is_participant::<Counted>(world, self.fosters.counted,));
+            assert!(is_root::<Counted>(world, self.targets.counted));
+
+            assert!(targeting::<Recursive>(
+                world,
+                self.fosters.recursive,
+                self.center
+            ));
+            assert!(targeting::<Recursive>(
+                world,
+                self.center,
+                self.targets.recursive
+            ));
+            assert!(is_participant::<Recursive>(world, self.fosters.recursive,));
+            assert!(is_root::<Recursive>(world, self.targets.recursive));
+
+            assert!(targeting::<Total>(world, self.fosters.total, self.center));
+            assert!(targeting::<Total>(world, self.center, self.targets.total));
+            assert!(is_participant::<Total>(world, self.fosters.total));
+            assert!(is_root::<Total>(world, self.targets.total));
+
+            assert!(is_participant::<Orphan>(world, self.center));
+            assert!(is_participant::<Counted>(world, self.center));
+            assert!(is_participant::<Recursive>(world, self.center));
+            assert!(is_participant::<Total>(world, self.center));
+        }
+
+        fn assert_cleaned(&self, world: &World) {
+            assert!(world.get_entity(self.center).is_none());
+
+            assert!(!has_edges(world, self.fosters.orphan));
+            assert!(!has_edges(world, self.targets.orphan));
+            assert!(!is_participant::<Orphan>(world, self.fosters.orphan));
+            assert!(!is_root::<Orphan>(world, self.targets.orphan));
+
+            assert!(world.get_entity(self.targets.counted).is_none());
+            assert!(!has_edges(world, self.fosters.counted));
+            assert!(!is_participant::<Counted>(world, self.fosters.counted,));
+
+            assert!(world.get_entity(self.fosters.recursive).is_none());
+            assert!(!has_edges(world, self.targets.recursive));
+            assert!(!is_root::<Recursive>(world, self.targets.recursive));
+
+            assert!(world.get_entity(self.fosters.total).is_none());
+            assert!(world.get_entity(self.targets.total).is_none());
+        }
     }
 
     #[test]
@@ -871,55 +934,8 @@ mod tests {
         world.set::<R>(e, test.center);
 
         world.checked_despawn(e);
-
-        assert!(targeting::<Orphan>(
-            &world,
-            test.fosters.orphan,
-            test.center
-        ));
-        assert!(targeting::<Orphan>(
-            &world,
-            test.center,
-            test.targets.orphan
-        ));
-        assert!(is_participant::<Orphan>(&world, test.fosters.orphan,));
-        assert!(is_root::<Orphan>(&world, test.targets.orphan));
-
-        assert!(targeting::<Counted>(
-            &world,
-            test.fosters.counted,
-            test.center
-        ));
-        assert!(targeting::<Counted>(
-            &world,
-            test.center,
-            test.targets.counted
-        ));
-        assert!(is_participant::<Counted>(&world, test.fosters.counted,));
-        assert!(is_root::<Counted>(&world, test.targets.counted));
-
-        assert!(targeting::<Recursive>(
-            &world,
-            test.fosters.recursive,
-            test.center
-        ));
-        assert!(targeting::<Recursive>(
-            &world,
-            test.center,
-            test.targets.recursive
-        ));
-        assert!(is_participant::<Recursive>(&world, test.fosters.recursive,));
-        assert!(is_root::<Recursive>(&world, test.targets.recursive));
-
-        assert!(targeting::<Total>(&world, test.fosters.total, test.center));
-        assert!(targeting::<Total>(&world, test.center, test.targets.total));
-        assert!(is_participant::<Total>(&world, test.fosters.total));
-        assert!(is_root::<Total>(&world, test.targets.total));
-
-        assert!(is_participant::<Orphan>(&world, test.center));
-        assert!(is_participant::<Counted>(&world, test.center));
-        assert!(is_participant::<Recursive>(&world, test.center));
-        assert!(is_participant::<Total>(&world, test.center));
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
     }
 
     #[test]
@@ -939,55 +955,8 @@ mod tests {
         world.set::<R>(test.center, e);
 
         world.checked_despawn(e);
-
-        assert!(targeting::<Orphan>(
-            &world,
-            test.fosters.orphan,
-            test.center
-        ));
-        assert!(targeting::<Orphan>(
-            &world,
-            test.center,
-            test.targets.orphan
-        ));
-        assert!(is_participant::<Orphan>(&world, test.fosters.orphan,));
-        assert!(is_root::<Orphan>(&world, test.targets.orphan));
-
-        assert!(targeting::<Counted>(
-            &world,
-            test.fosters.counted,
-            test.center
-        ));
-        assert!(targeting::<Counted>(
-            &world,
-            test.center,
-            test.targets.counted
-        ));
-        assert!(is_participant::<Counted>(&world, test.fosters.counted,));
-        assert!(is_root::<Counted>(&world, test.targets.counted));
-
-        assert!(targeting::<Recursive>(
-            &world,
-            test.fosters.recursive,
-            test.center
-        ));
-        assert!(targeting::<Recursive>(
-            &world,
-            test.center,
-            test.targets.recursive
-        ));
-        assert!(is_participant::<Recursive>(&world, test.fosters.recursive,));
-        assert!(is_root::<Recursive>(&world, test.targets.recursive));
-
-        assert!(targeting::<Total>(&world, test.fosters.total, test.center));
-        assert!(targeting::<Total>(&world, test.center, test.targets.total));
-        assert!(is_participant::<Total>(&world, test.fosters.total));
-        assert!(is_root::<Total>(&world, test.targets.total));
-
-        assert!(is_participant::<Orphan>(&world, test.center));
-        assert!(is_participant::<Counted>(&world, test.center));
-        assert!(is_participant::<Recursive>(&world, test.center));
-        assert!(is_participant::<Total>(&world, test.center));
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
     }
 
     #[test]
@@ -1007,23 +976,108 @@ mod tests {
         world.set::<R>(e, test.center);
 
         world.checked_despawn(e);
+        test.assert_cleaned(&world);
+    }
 
-        assert!(world.get_entity(test.center).is_none());
+    #[test]
+    fn counted_out() {
+        struct R;
 
-        assert!(!has_edges(&world, test.fosters.orphan));
-        assert!(!has_edges(&world, test.targets.orphan));
-        assert!(!is_participant::<Orphan>(&world, test.fosters.orphan));
-        assert!(!is_root::<Orphan>(&world, test.targets.orphan));
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
+        }
 
-        assert!(world.get_entity(test.targets.counted).is_none());
-        assert!(!has_edges(&world, test.fosters.counted));
-        assert!(!is_participant::<Counted>(&world, test.fosters.counted,));
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
 
-        assert!(world.get_entity(test.fosters.recursive).is_none());
-        assert!(!has_edges(&world, test.targets.recursive));
-        assert!(!is_root::<Recursive>(&world, test.targets.recursive));
+        let test = Test::new(&mut world);
 
-        assert!(world.get_entity(test.fosters.total).is_none());
-        assert!(world.get_entity(test.targets.total).is_none());
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+
+        world.checked_despawn(e);
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
+    }
+
+    #[test]
+    fn recursive_in() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+
+        world.checked_despawn(e);
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
+    }
+
+    #[test]
+    fn recursive_out() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+
+        world.checked_despawn(e);
+        test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn total_in() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+
+        world.checked_despawn(e);
+        test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn total_out() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+
+        world.checked_despawn(e);
+        test.assert_cleaned(&world);
     }
 }
