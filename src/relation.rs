@@ -378,7 +378,7 @@ impl Command for UnsetErased {
         };
 
         let Some(mut target_edges) = world
-            .get_mut::<Edges>(self.foster)
+            .get_mut::<Edges>(self.target)
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
             world.entity_mut(self.foster).insert(foster_edges);
@@ -1078,6 +1078,170 @@ mod tests {
         world.set::<R>(test.center, e);
 
         world.checked_despawn(e);
+        test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn orphan_in_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+        world.unset::<R>(e, test.center);
+
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
+    }
+
+    #[test]
+    fn orphan_out_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+        world.unset::<R>(test.center, e);
+
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
+    }
+
+    #[test]
+    fn counted_in_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+        world.unset::<R>(e, test.center);
+
+        test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn counted_out_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+        world.unset::<R>(test.center, e);
+
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
+    }
+
+    #[test]
+    fn recursive_in_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+        world.unset::<R>(e, test.center);
+
+        test.assert_unchanged(&world);
+        assert!(!is_participant::<R>(&world, test.center));
+    }
+
+    #[test]
+    fn recursive_out_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+        world.unset::<R>(test.center, e);
+
+        test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn total_in_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+        world.unset::<R>(e, test.center);
+
+        test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn total_out_unset() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+        world.unset::<R>(test.center, e);
+
         test.assert_cleaned(&world);
     }
 }
