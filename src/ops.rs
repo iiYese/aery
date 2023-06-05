@@ -83,51 +83,45 @@ where
     _phantom: PhantomData<(T, E)>,
 }
 
-mod sealed {
-    use super::*;
+/// Trait to turn a [`Query`] into an [`Ops`] struct so relation operations can be performed.
+/// See [`Join`] and [`BreadthFirst`] for how to perform joins and traversals.
+pub trait AeryQueryExt {
+    /// Provides read only access to the left portion of the [`Query`] tuple.
+    fn ops(&self) -> Ops<&Self>;
+    /// Provides mutable access to the left portion of the [`Query`] tuple.
+    fn ops_mut(&mut self) -> Ops<&mut Self>;
+}
 
-    /// Trait to turn a [`Query`] into an [`Ops`] struct so relation operations can be performed.
-    /// See [`Join`] and [`BreadthFirst`] for how to perform joins and traversals.
-    pub trait AeryQueryExt {
-        /// Provides read only access to the left portion of the [`Query`] tuple.
-        fn ops(&self) -> Ops<&Self>;
-        /// Provides mutable access to the left portion of the [`Query`] tuple.
-        fn ops_mut(&mut self) -> Ops<&mut Self>;
+impl<'w, 's, Q, F, R> AeryQueryExt for Query<'w, 's, (Q, Relations<R>), F>
+where
+    Q: WorldQuery,
+    F: ReadOnlyWorldQuery,
+    R: RelationSet + Send + Sync,
+{
+    fn ops(&self) -> Ops<&Self> {
+        Ops {
+            left: self,
+            joins: PhantomData,
+            right: (),
+            traversal: (),
+        }
     }
 
-    impl<'w, 's, Q, F, R> AeryQueryExt for Query<'w, 's, (Q, Relations<R>), F>
-    where
-        Q: WorldQuery,
-        F: ReadOnlyWorldQuery,
-        R: RelationSet + Send + Sync,
-    {
-        fn ops(&self) -> Ops<&Self> {
-            Ops {
-                left: self,
-                joins: PhantomData,
-                right: (),
-                traversal: (),
-            }
-        }
-
-        fn ops_mut(&mut self) -> Ops<&mut Self> {
-            Ops {
-                left: self,
-                joins: PhantomData,
-                right: (),
-                traversal: (),
-            }
+    fn ops_mut(&mut self) -> Ops<&mut Self> {
+        Ops {
+            left: self,
+            joins: PhantomData,
+            right: (),
+            traversal: (),
         }
     }
 }
 
-pub use sealed::*;
-
 /// Trait to implement the `breadth_first` functionality of the operations API. Any `T` in
 /// `breadth_first::<T>(roots)` must be present in the `Relations<(..)>` parameter of a query.
 /// Diamonds are impossible with `Exclusive` relations where the edges face bottom up instead of
-/// top down so this the only type of hierarchy supported. Any other patern will not be recognised
-/// for traversal. See [`Join`] for performing joins.
+/// top down. For this reason bottom up graphs are the only pattern that is recognized for
+/// traversal. See [`Join`] for performing joins.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -143,10 +137,16 @@ pub use sealed::*;
 /// fn setup(mut commands: Commands) {
 ///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| commands.spawn_empty().id());
 ///
-///     [(e1, e0), (e2, e0), (e3, e1), (e4, e1), (e5, e2), (e6, e2)]
-///         .into_iter()
-///         .map(|(from, to)| Set::<R>::new(from, to))
-///         .for_each(|set| commands.add(set));
+///     for (from, to) in [
+///         (e1, e0),
+///         (e2, e0),
+///         (e3, e1),
+///         (e4, e1),
+///         (e5, e2),
+///         (e6, e2)
+///     ] {
+///         commands.set::<R>(from, to);
+///     }
 ///
 ///     //  Will construct the following graph:
 ///     //
@@ -166,14 +166,14 @@ pub use sealed::*;
 ///     })
 /// }
 /// ```
-/// Resulting Archetypes/Tables:
+/// What the Archetypes/Tables should look like:
 ///
 /// | entityid  | A | Root<R> |
 /// |-----------|---|---------|
 /// | 0         | _ | _       |
 ///
-/// *Note:* `Root<_>` markers are automatically added and removed by the [`Set`], [`UnSet`] and
-/// [`CheckedDespawn`] commands. Roots of graphs are tracked for convenient traversing.
+/// *Note:* `Root<_>` markers are automatically added and removed by the provided commands for
+/// convenient traversing.
 ///
 /// | entityid  | A | R |
 /// |-----------|---|---|

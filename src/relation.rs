@@ -3,7 +3,7 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::{Or, With, WorldQuery},
-        system::{Command, Resource},
+        system::{Command, Commands, Resource},
         world::World,
     },
     utils::{HashMap, HashSet},
@@ -35,10 +35,65 @@ pub struct Participates<R: Relation> {
     filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
 }
 
-/// Supported cleanup patterns. Cleanup is triggered when the entities participating in a
-/// relationship change. Ie.
+/// Supported cleanup patterns. When entities have multiple relations with different cleanup
+/// policies each relation looks at the graph as if it were the only relation that existed.
+/// In effect the summation of their cleanup is applied.
+/// Cleanup is triggered when the entities participating in a relationship change. Ie.
 /// - When an entity is despawned
 /// - When the relation is removed
+/// # Example
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// struct O;
+///
+/// impl Relation for O {
+///     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+/// }
+///
+/// struct R;
+///
+/// impl Relation for R {
+///     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
+/// }
+///
+/// fn sys(world: &mut World) {
+///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| world.spawn_empty().id());
+///
+///     world.set::<O>(e1, e0);
+///     world.set::<O>(e2, e0);
+///     world.set::<O>(e3, e1);
+///     world.set::<O>(e4, e1);
+///
+///     world.set::<R>(e1, e0);
+///     world.set::<R>(e4, e1);
+///     world.set::<R>(e5, e2);
+///     world.set::<R>(e6, e2);
+///
+///     // Results in:
+///     //             0
+///     //           // \
+///     //          //   \
+///     //         RO     O
+///     //        //       \
+///     //       //         \
+///     //      1            2
+///     //     / \\         / \
+///     //    O   RO       R   R
+///     //   /     \\     /     \
+///     //  3       4    5       6
+///
+///     world.checked_despawn(e0);
+///
+///     // After cleanup:
+///     //                   2
+///     //                  / \
+///     //      3          R   R
+///     //                /     \
+///     //               5       6
+/// }
+/// ```
 #[derive(Clone, Copy)]
 pub enum CleanupPolicy {
     /// Will do no further cleanup.
@@ -59,7 +114,7 @@ pub trait Relation: 'static + Send + Sync {
     const EXCLUSIVE: bool = true;
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug)]
 pub(crate) struct Edges {
     pub fosters: [HashMap<TypeId, IndexSet<Entity>>; 4],
     pub targets: [HashMap<TypeId, IndexSet<Entity>>; 4],
@@ -165,16 +220,6 @@ where
     pub _phantom: PhantomData<R>,
 }
 
-impl<R: Relation> Set<R> {
-    pub fn new(foster: Entity, target: Entity) -> Self {
-        Set {
-            foster,
-            target,
-            _phantom: PhantomData,
-        }
-    }
-}
-
 impl<R> Command for Set<R>
 where
     R: Relation,
@@ -255,6 +300,34 @@ where
     }
 }
 
+/// Convenience trait to sugar adding relations.
+pub trait SetExt {
+    fn set<R: Relation>(&mut self, foster: Entity, target: Entity);
+}
+
+impl SetExt for Commands<'_, '_> {
+    fn set<R: Relation>(&mut self, foster: Entity, target: Entity) {
+        self.add(Set::<R> {
+            foster,
+            target,
+            _phantom: PhantomData,
+        });
+    }
+}
+
+impl SetExt for World {
+    fn set<R: Relation>(&mut self, foster: Entity, target: Entity) {
+        Command::write(
+            Set::<R> {
+                foster,
+                target,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+}
+
 /// Command to remove relationships between entities.
 pub struct Unset<R>
 where
@@ -324,42 +397,12 @@ impl Command for UnsetErased {
                 fosters.remove(&self.foster);
             });
 
-        if foster_edges.targets[self.policy as usize]
-            .get(&self.typeid)
-            .map_or(false, IndexSet::is_empty)
-        {
-            foster_edges.targets[self.policy as usize].remove(&self.typeid);
-        }
-
         let target_orphaned = target_edges.fosters[self.policy as usize]
             .get(&self.typeid)
             .map_or(false, IndexSet::is_empty);
 
-        if target_orphaned {
-            target_edges.fosters[self.policy as usize].remove(&self.typeid);
-        }
-
-        if foster_edges
-            .targets
-            .iter()
-            .chain(foster_edges.fosters.iter())
-            .all(HashMap::is_empty)
-        {
-            world.entity_mut(self.foster).remove::<Edges>();
-        } else {
-            world.entity_mut(self.foster).insert(foster_edges);
-        }
-
-        if target_edges
-            .targets
-            .iter()
-            .chain(target_edges.fosters.iter())
-            .any(|bucket| !bucket.is_empty())
-        {
-            world.entity_mut(self.target).insert(target_edges);
-        } else {
-            world.entity_mut(self.target).remove::<Edges>();
-        }
+        world.entity_mut(self.foster).insert(foster_edges);
+        world.entity_mut(self.target).insert(target_edges);
 
         match self.policy {
             CleanupPolicy::Orphan => {
@@ -406,6 +449,34 @@ impl Command for UnsetErased {
     }
 }
 
+/// Convenience trait to sugar removing relations.
+pub trait UnsetExt {
+    fn unset<R: Relation>(&mut self, foster: Entity, target: Entity);
+}
+
+impl UnsetExt for Commands<'_, '_> {
+    fn unset<R: Relation>(&mut self, foster: Entity, target: Entity) {
+        self.add(Unset::<R> {
+            foster,
+            target,
+            _phantom: PhantomData,
+        });
+    }
+}
+
+impl UnsetExt for World {
+    fn unset<R: Relation>(&mut self, foster: Entity, target: Entity) {
+        Command::write(
+            Unset::<R> {
+                foster,
+                target,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+}
+
 /// Command to despawn entities with rleations. Despawning via any other method can lead to
 /// dangling which will not produce correct behavior!
 pub struct CheckedDespawn {
@@ -420,9 +491,9 @@ impl Command for CheckedDespawn {
 
         let mut graph = world.query::<&mut Edges>();
 
-        while let Some(entity) = queue.pop_front() {
+        while let Some(curr) = queue.pop_front() {
             let Ok(edges) = graph
-                .get_mut(world, entity)
+                .get_mut(world, curr)
                 .map(|mut edges| std::mem::take(&mut *edges))
             else {
                 continue
@@ -437,23 +508,37 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let target_fosters = target_edges.fosters[CleanupPolicy::Total as usize]
+                let Some(target_fosters) = target_edges
+                    .fosters[CleanupPolicy::Total as usize]
                     .get_mut(typeid)
-                    .unwrap();
+                else {
+                    continue
+                };
 
-                target_fosters.remove(target);
+                target_fosters.remove(&curr);
 
                 if target_fosters.is_empty() {
+                    queue.push_back(*target);
                     to_despawn.insert(*target);
                 }
             }
 
-            for foster in edges.fosters[CleanupPolicy::Total as usize]
+            for (typeid, foster) in edges.fosters[CleanupPolicy::Total as usize]
                 .iter()
-                .flat_map(|(_, fosters)| fosters.iter().copied())
+                .flat_map(|(typeid, fosters)| fosters.iter().map(move |foster| (typeid, foster)))
             {
-                queue.push_back(foster);
-                to_despawn.insert(foster);
+                let Ok(mut foster_edges) = graph.get_mut(world, *foster) else {
+                    continue
+                };
+
+                foster_edges.targets[CleanupPolicy::Total as usize]
+                    .entry(*typeid)
+                    .and_modify(|bucket| {
+                        bucket.remove(&curr);
+                    });
+
+                queue.push_back(*foster);
+                to_despawn.insert(*foster);
             }
 
             // Recursive relations
@@ -465,20 +550,33 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let target_fosters = target_edges.fosters[CleanupPolicy::Recursive as usize]
+                let Some(target_fosters) = target_edges
+                    .fosters[CleanupPolicy::Recursive as usize]
                     .get_mut(typeid)
-                    .unwrap();
+                else {
+                    continue
+                };
 
-                target_fosters.remove(target);
+                target_fosters.remove(&curr);
                 to_refrag.entry(*typeid).or_default().insert(*target);
             }
 
-            for foster in edges.fosters[CleanupPolicy::Recursive as usize]
+            for (typeid, foster) in edges.fosters[CleanupPolicy::Recursive as usize]
                 .iter()
-                .flat_map(|(_, fosters)| fosters.iter().copied())
+                .flat_map(|(typeid, fosters)| fosters.iter().map(move |foster| (typeid, foster)))
             {
-                queue.push_back(foster);
-                to_despawn.insert(foster);
+                let Ok(mut foster_edges) = graph.get_mut(world, *foster) else {
+                    continue
+                };
+
+                foster_edges.targets[CleanupPolicy::Recursive as usize]
+                    .entry(*typeid)
+                    .and_modify(|bucket| {
+                        bucket.remove(&curr);
+                    });
+
+                queue.push_back(*foster);
+                to_despawn.insert(*foster);
             }
 
             // Counted relations
@@ -490,13 +588,17 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let target_fosters = target_edges.fosters[CleanupPolicy::Counted as usize]
+                let Some(target_fosters) = target_edges
+                    .fosters[CleanupPolicy::Counted as usize]
                     .get_mut(typeid)
-                    .unwrap();
+                else {
+                    continue
+                };
 
-                target_fosters.remove(target);
+                target_fosters.remove(&curr);
 
                 if target_fosters.is_empty() {
+                    queue.push_back(*target);
                     to_despawn.insert(*target);
                 }
             }
@@ -510,9 +612,10 @@ impl Command for CheckedDespawn {
                 };
 
                 foster_edges.targets[CleanupPolicy::Counted as usize]
-                    .get_mut(typeid)
-                    .unwrap()
-                    .remove(&self.entity);
+                    .entry(*typeid)
+                    .and_modify(|bucket| {
+                        bucket.remove(&curr);
+                    });
 
                 to_refrag.entry(*typeid).or_default().insert(*foster);
             }
@@ -526,11 +629,12 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let target_fosters = target_edges.fosters[CleanupPolicy::Orphan as usize]
-                    .get_mut(typeid)
-                    .unwrap();
+                target_edges.fosters[CleanupPolicy::Orphan as usize]
+                    .entry(*typeid)
+                    .and_modify(|bucket| {
+                        bucket.remove(&curr);
+                    });
 
-                target_fosters.remove(target);
                 to_refrag.entry(*typeid).or_default().insert(*target);
             }
 
@@ -542,11 +646,12 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let foster_targets = foster_edges.targets[CleanupPolicy::Orphan as usize]
-                    .get_mut(typeid)
-                    .unwrap();
+                foster_edges.targets[CleanupPolicy::Orphan as usize]
+                    .entry(*typeid)
+                    .and_modify(|bucket| {
+                        bucket.remove(&curr);
+                    });
 
-                foster_targets.remove(foster);
                 to_refrag.entry(*typeid).or_default().insert(*foster);
             }
         }
@@ -570,45 +675,355 @@ impl Command for CheckedDespawn {
     }
 }
 
+/// Convenience trait to sugar despawning entities while checking for relations.
+pub trait CheckedDespawnExt {
+    fn checked_despawn(&mut self, entity: Entity);
+}
+
+impl CheckedDespawnExt for Commands<'_, '_> {
+    fn checked_despawn(&mut self, entity: Entity) {
+        self.add(CheckedDespawn { entity });
+    }
+}
+
+impl CheckedDespawnExt for World {
+    fn checked_despawn(&mut self, entity: Entity) {
+        Command::write(CheckedDespawn { entity }, self);
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{prelude::*, relation::Edges};
-    use bevy::{ecs::system::Command, prelude::*};
+    use crate::{
+        prelude::*,
+        relation::{Edges, Participant, RefragmentHooks, RootMarker},
+    };
+    use bevy::prelude::*;
     use core::any::TypeId;
     use std::array::from_fn;
 
-    struct R;
+    fn has_edges(world: &World, entity: Entity) -> bool {
+        world.get::<Edges>(entity).is_some()
+    }
 
-    impl Relation for R {}
+    fn is_root<R: Relation>(world: &World, entity: Entity) -> bool {
+        world.get::<RootMarker<R>>(entity).is_some()
+    }
 
-    fn assert_targets<R: Relation>(world: &World, foster: Entity, target: Entity) {
-        world
+    fn is_participant<R: Relation>(world: &World, entity: Entity) -> bool {
+        world.get::<Participant<R>>(entity).is_some()
+    }
+
+    fn targeting<R: Relation>(world: &World, foster: Entity, target: Entity) -> bool {
+        let foster_is_targeting = world
             .get::<Edges>(foster)
-            .expect("Foster has no edges")
-            .targets[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
-            .expect("Foster has no bucket entry for R")
-            .get(&target)
-            .expect("Foster does not target entity");
+            .map(|edges| &edges.targets[R::CLEANUP_POLICY as usize])
+            .and_then(|bucket| bucket.get(&TypeId::of::<R>()))
+            .map_or(false, |set| set.contains(&target));
 
-        world
+        let target_is_fostered = world
             .get::<Edges>(target)
-            .expect("Target has no edges")
-            .fosters[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
-            .expect("Target has no bucket entry for R")
-            .get(&foster)
-            .expect("Target is not fostered");
+            .map(|edges| &edges.fosters[R::CLEANUP_POLICY as usize])
+            .and_then(|bucket| bucket.get(&TypeId::of::<R>()))
+            .map_or(false, |set| set.contains(&foster));
+
+        if foster_is_targeting != target_is_fostered {
+            panic!("Asymmetric edge info");
+        }
+
+        foster_is_targeting
     }
 
     #[test]
-    fn set() {
-        App::new()
-            .add_plugin(Aery)
-            .add_startup_system(|world: &mut World| {
-                let [foster, target] = from_fn(|_| world.spawn_empty().id());
-                Command::write(Set::<R>::new(foster, target), world);
-                assert_targets::<R>(world, foster, target);
-            });
+    fn set_unset() {
+        struct R;
+
+        impl Relation for R {}
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+        let [foster, target] = from_fn(|_| world.spawn_empty().id());
+
+        world.set::<R>(foster, target);
+        assert!(targeting::<R>(&world, foster, target));
+        assert!(is_participant::<R>(&world, foster));
+        assert!(is_root::<R>(&world, target));
+
+        world.unset::<R>(foster, target);
+        assert!(!has_edges(&world, target));
+        assert!(!has_edges(&world, foster));
+        assert!(!is_participant::<R>(&world, foster));
+        assert!(!is_root::<R>(&world, target));
+    }
+
+    #[test]
+    fn exclusive() {
+        struct R;
+
+        impl Relation for R {}
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+        let [foster, t0, t1] = from_fn(|_| world.spawn_empty().id());
+
+        // Before overwrite
+        world.set::<R>(foster, t0);
+
+        assert!(targeting::<R>(&world, foster, t0));
+        assert!(is_participant::<R>(&world, foster));
+        assert!(is_root::<R>(&world, t0));
+
+        // After overwrite
+        world.set::<R>(foster, t1);
+
+        assert!(targeting::<R>(&world, foster, t1));
+        assert!(is_participant::<R>(&world, foster));
+        assert!(is_root::<R>(&world, t1));
+
+        assert!(!has_edges(&world, t0));
+        assert!(!is_root::<R>(&world, t0));
+    }
+
+    struct Orphan;
+    struct Counted;
+    struct Recursive;
+    struct Total;
+
+    impl Relation for Orphan {
+        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+    }
+
+    impl Relation for Counted {
+        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
+    }
+
+    impl Relation for Recursive {
+        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
+    }
+
+    impl Relation for Total {
+        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
+    }
+
+    #[derive(Debug)]
+    struct TestEdges {
+        orphan: Entity,
+        counted: Entity,
+        recursive: Entity,
+        total: Entity,
+    }
+
+    #[derive(Debug)]
+    struct Test {
+        center: Entity,
+        targets: TestEdges,
+        fosters: TestEdges,
+    }
+
+    impl Test {
+        fn new(world: &mut World) -> Self {
+            let test = Self {
+                center: world.spawn_empty().id(),
+                targets: TestEdges {
+                    orphan: world.spawn_empty().id(),
+                    counted: world.spawn_empty().id(),
+                    recursive: world.spawn_empty().id(),
+                    total: world.spawn_empty().id(),
+                },
+                fosters: TestEdges {
+                    orphan: world.spawn_empty().id(),
+                    counted: world.spawn_empty().id(),
+                    recursive: world.spawn_empty().id(),
+                    total: world.spawn_empty().id(),
+                },
+            };
+
+            world.set::<Orphan>(test.fosters.orphan, test.center);
+            world.set::<Orphan>(test.center, test.targets.orphan);
+
+            world.set::<Counted>(test.fosters.counted, test.center);
+            world.set::<Counted>(test.center, test.targets.counted);
+
+            world.set::<Recursive>(test.fosters.recursive, test.center);
+            world.set::<Recursive>(test.center, test.targets.recursive);
+
+            world.set::<Total>(test.fosters.total, test.center);
+            world.set::<Total>(test.center, test.targets.total);
+
+            test
+        }
+    }
+
+    #[test]
+    fn orphan_in() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+
+        world.checked_despawn(e);
+
+        assert!(targeting::<Orphan>(
+            &world,
+            test.fosters.orphan,
+            test.center
+        ));
+        assert!(targeting::<Orphan>(
+            &world,
+            test.center,
+            test.targets.orphan
+        ));
+        assert!(is_participant::<Orphan>(&world, test.fosters.orphan,));
+        assert!(is_root::<Orphan>(&world, test.targets.orphan));
+
+        assert!(targeting::<Counted>(
+            &world,
+            test.fosters.counted,
+            test.center
+        ));
+        assert!(targeting::<Counted>(
+            &world,
+            test.center,
+            test.targets.counted
+        ));
+        assert!(is_participant::<Counted>(&world, test.fosters.counted,));
+        assert!(is_root::<Counted>(&world, test.targets.counted));
+
+        assert!(targeting::<Recursive>(
+            &world,
+            test.fosters.recursive,
+            test.center
+        ));
+        assert!(targeting::<Recursive>(
+            &world,
+            test.center,
+            test.targets.recursive
+        ));
+        assert!(is_participant::<Recursive>(&world, test.fosters.recursive,));
+        assert!(is_root::<Recursive>(&world, test.targets.recursive));
+
+        assert!(targeting::<Total>(&world, test.fosters.total, test.center));
+        assert!(targeting::<Total>(&world, test.center, test.targets.total));
+        assert!(is_participant::<Total>(&world, test.fosters.total));
+        assert!(is_root::<Total>(&world, test.targets.total));
+
+        assert!(is_participant::<Orphan>(&world, test.center));
+        assert!(is_participant::<Counted>(&world, test.center));
+        assert!(is_participant::<Recursive>(&world, test.center));
+        assert!(is_participant::<Total>(&world, test.center));
+    }
+
+    #[test]
+    fn orphan_out() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(test.center, e);
+
+        world.checked_despawn(e);
+
+        assert!(targeting::<Orphan>(
+            &world,
+            test.fosters.orphan,
+            test.center
+        ));
+        assert!(targeting::<Orphan>(
+            &world,
+            test.center,
+            test.targets.orphan
+        ));
+        assert!(is_participant::<Orphan>(&world, test.fosters.orphan,));
+        assert!(is_root::<Orphan>(&world, test.targets.orphan));
+
+        assert!(targeting::<Counted>(
+            &world,
+            test.fosters.counted,
+            test.center
+        ));
+        assert!(targeting::<Counted>(
+            &world,
+            test.center,
+            test.targets.counted
+        ));
+        assert!(is_participant::<Counted>(&world, test.fosters.counted,));
+        assert!(is_root::<Counted>(&world, test.targets.counted));
+
+        assert!(targeting::<Recursive>(
+            &world,
+            test.fosters.recursive,
+            test.center
+        ));
+        assert!(targeting::<Recursive>(
+            &world,
+            test.center,
+            test.targets.recursive
+        ));
+        assert!(is_participant::<Recursive>(&world, test.fosters.recursive,));
+        assert!(is_root::<Recursive>(&world, test.targets.recursive));
+
+        assert!(targeting::<Total>(&world, test.fosters.total, test.center));
+        assert!(targeting::<Total>(&world, test.center, test.targets.total));
+        assert!(is_participant::<Total>(&world, test.fosters.total));
+        assert!(is_root::<Total>(&world, test.targets.total));
+
+        assert!(is_participant::<Orphan>(&world, test.center));
+        assert!(is_participant::<Counted>(&world, test.center));
+        assert!(is_participant::<Recursive>(&world, test.center));
+        assert!(is_participant::<Total>(&world, test.center));
+    }
+
+    #[test]
+    fn counted_in() {
+        struct R;
+
+        impl Relation for R {
+            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
+        }
+
+        let mut world = World::new();
+        world.init_resource::<RefragmentHooks>();
+
+        let test = Test::new(&mut world);
+
+        let e = world.spawn_empty().id();
+        world.set::<R>(e, test.center);
+
+        world.checked_despawn(e);
+
+        assert!(world.get_entity(test.center).is_none());
+
+        assert!(!has_edges(&world, test.fosters.orphan));
+        assert!(!has_edges(&world, test.targets.orphan));
+        assert!(!is_participant::<Orphan>(&world, test.fosters.orphan));
+        assert!(!is_root::<Orphan>(&world, test.targets.orphan));
+
+        assert!(world.get_entity(test.targets.counted).is_none());
+        assert!(!has_edges(&world, test.fosters.counted));
+        assert!(!is_participant::<Counted>(&world, test.fosters.counted,));
+
+        assert!(world.get_entity(test.fosters.recursive).is_none());
+        assert!(!has_edges(&world, test.targets.recursive));
+        assert!(!is_root::<Recursive>(&world, test.targets.recursive));
+
+        assert!(world.get_entity(test.fosters.total).is_none());
+        assert!(world.get_entity(test.targets.total).is_none());
     }
 }

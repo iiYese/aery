@@ -42,14 +42,18 @@
 
 pub mod ops;
 pub mod relation;
-mod tuple_traits;
+pub mod tuple_traits;
 
 pub mod prelude {
     pub use crate::{
         ops::{
             AeryQueryExt, BreadthFirst, ControlFlow, InnerForEach, Join, Relations, TrappedForEach,
         },
-        relation::{CheckedDespawn, Participates, Relation, Root, Set, Unset},
+        relation::{
+            CheckedDespawn, CheckedDespawnExt, CleanupPolicy, Participates, Relation, Root, SetExt,
+            UnsetExt,
+        },
+        tuple_traits::{Joinable, RelationSet},
         Aery,
     };
 }

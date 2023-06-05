@@ -11,12 +11,43 @@ use bevy::{
     utils::all_tuples,
 };
 
+mod sealed {
+    use super::*;
+    pub trait Sealed {}
+
+    impl<R: Relation> Sealed for R {}
+
+    impl<Q, F> Sealed for &'_ Query<'_, '_, Q, F>
+    where
+        Q: WorldQuery,
+        F: ReadOnlyWorldQuery,
+    {
+    }
+
+    impl<Q, F> Sealed for &'_ mut Query<'_, '_, Q, F>
+    where
+        Q: WorldQuery,
+        F: ReadOnlyWorldQuery,
+    {
+    }
+
+    macro_rules! impl_sealed {
+        ($($P:ident),*) => {
+            impl<$($P: Sealed),*> Sealed for ($($P,)*) {
+            }
+        };
+    }
+    all_tuples!(impl_sealed, 1, 16, P);
+}
+
+use sealed::*;
+
 macro_rules! count {
     () => { 0 };
     ($_:tt $($tail:tt)*) => { 1  + count!($($tail)*) };
 }
 
-pub trait RelationSet {
+pub trait RelationSet: Sealed {
     type Filters: ReadOnlyWorldQuery;
 }
 
@@ -88,7 +119,7 @@ macro_rules! impl_append {
 
 all_tuples!(impl_append, 1, 15, P, p);
 
-pub trait Joinable<'a, const N: usize> {
+pub trait Joinable<'a, const N: usize>: Sealed {
     type Out;
     fn check(items: &Self, entities: [Entity; N]) -> [bool; N];
     fn join(items: &'a mut Self, entities: [Entity; N]) -> Self::Out;
@@ -128,7 +159,7 @@ where
 
 impl<'a, P0> Joinable<'a, 1> for (P0,)
 where
-    P0: Joinable<'a, 1>,
+    P0: Sealed + Joinable<'a, 1>,
 {
     type Out = <P0 as Joinable<'a, 1>>::Out;
 
@@ -178,8 +209,8 @@ macro_rules! impl_joinable {
     ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
         impl<'a, P0, $($P),*> Joinable<'a, { 1 + count!($($P )*) }> for (P0, $($P,)*)
         where
-            P0: Joinable<'a, 1>,
-            $($P: Joinable<'a, 1>,)*
+            P0: Sealed + Joinable<'a, 1>,
+            $($P: Sealed + Joinable<'a, 1>,)*
         {
             type Out = (<P0 as Joinable<'a, 1>>::Out, $(<$P as Joinable<'a, 1>>::Out,)*);
 
