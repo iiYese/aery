@@ -74,13 +74,8 @@ macro_rules! impl_product {
         impl<$($P: Relation),*> Product<{ count!($($P )*) }> for ($($P,)*) {
             fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, { count!($($P )*) }> {
                 let base_iterators = [$(edges.edges.iter_targets::<$P>(),)*];
-                let mut live_iterators = base_iterators.clone();
-                let mut entities = [None::<Entity>; count!($($P )*)];
-
-                live_iterators
-                    .iter_mut()
-                    .zip(entities.iter_mut())
-                    .for_each(|(it, ent)| *ent = it.next());
+                let live_iterators = base_iterators.clone();
+                let entities = [None::<Entity>; count!($($P )*)];
 
                 EdgeProduct {
                     base_iterators,

@@ -496,7 +496,7 @@ where
     {
         for (mut left, relations) in self.left.iter() {
             let mut edge_product = Joins::product(relations.edges);
-            let mut matches = [true; N];
+            let mut matches = [false; N];
             while let Some(entities) = edge_product.advance(matches) {
                 matches = Joinable::check(&self.right, entities);
 
@@ -532,7 +532,7 @@ where
     {
         for (mut left, relations) in self.left.iter_mut() {
             let mut edge_product = Joins::product(relations.edges);
-            let mut matches = [true; N];
+            let mut matches = [false; N];
             while let Some(entities) = edge_product.advance(matches) {
                 matches = Joinable::check(&self.right, entities);
 
@@ -586,7 +586,7 @@ where
             }
 
             let mut edge_product = Joins::product(relations.edges);
-            let mut matches = [true; N];
+            let mut matches = [false; N];
 
             while let Some(entities) = edge_product.advance(matches) {
                 matches = Joinable::check(&self.right, entities);
@@ -646,7 +646,7 @@ where
             }
 
             let mut edge_product = Joins::product(relations.edges);
-            let mut matches = [true; N];
+            let mut matches = [false; N];
 
             while let Some(entities) = edge_product.advance(matches) {
                 matches = Joinable::check(&self.right, entities);
@@ -752,5 +752,348 @@ mod compile_tests {
             .breadth_first::<R0>(None::<Entity>)
             .join::<R1>(&mut right)
             .for_each(|a, b| {});
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::*;
+    use bevy::{app::AppExit, prelude::*};
+
+    #[derive(Component)]
+    struct S;
+
+    #[derive(Component, Debug)]
+    struct A(i32);
+
+    #[derive(Component, Debug)]
+    struct B(i32);
+
+    #[derive(Component, Debug)]
+    struct C(i32);
+
+    struct R0;
+
+    impl Relation for R0 {
+        const EXCLUSIVE: bool = false;
+    }
+
+    struct R1;
+
+    impl Relation for R1 {
+        const EXCLUSIVE: bool = false;
+    }
+
+    struct R2;
+
+    impl Relation for R2 {
+        const EXCLUSIVE: bool = false;
+    }
+
+    #[derive(Resource)]
+    struct EntityList {
+        entities: [Entity; 9],
+    }
+
+    #[test]
+    fn left_scarce_permutations_o() {
+        fn init(world: &mut World) {
+            let entities = [
+                world.spawn(A(0)).id(),
+                world.spawn(A(0)).id(),
+                world.spawn(A(0)).id(),
+                //
+                world.spawn(B(0)).id(),
+                world.spawn(B(0)).id(),
+                world.spawn(B(0)).id(),
+                //
+                world.spawn(C(0)).id(),
+                world.spawn(C(0)).id(),
+                world.spawn(C(0)).id(),
+            ];
+
+            let [_, a1, _, b0, _, b2, _, c1, _] = entities;
+
+            let left = world.spawn(S).id();
+
+            world.set::<R0>(left, a1);
+            world.set::<R1>(left, b0);
+            world.set::<R1>(left, b2);
+            world.set::<R2>(left, c1);
+
+            world.insert_resource(EntityList { entities });
+        }
+
+        fn run(
+            left: Query<(&S, Relations<(R0, R1, R2)>)>,
+            mut a: Query<&mut A>,
+            mut b: Query<&mut B>,
+            mut c: Query<&mut C>,
+        ) {
+            left.ops()
+                .join::<R0>(&mut a)
+                .join::<R1>(&mut b)
+                .join::<R2>(&mut c)
+                .for_each(|_, (mut a, mut b, mut c)| {
+                    a.0 += 1;
+                    b.0 += 1;
+                    c.0 += 1;
+                });
+        }
+
+        fn test(
+            mut exit: EventWriter<AppExit>,
+            entity_list: Res<EntityList>,
+            a: Query<&A>,
+            b: Query<&B>,
+            c: Query<&C>,
+        ) {
+            let [a0, a1, a2, b0, b1, b2, c0, c1, c2] = entity_list.entities;
+
+            assert_eq!(0, a.get(a0).unwrap().0);
+            assert_eq!(2, a.get(a1).unwrap().0);
+            assert_eq!(0, a.get(a2).unwrap().0);
+
+            assert_eq!(1, b.get(b0).unwrap().0);
+            assert_eq!(0, b.get(b1).unwrap().0);
+            assert_eq!(1, b.get(b2).unwrap().0);
+
+            assert_eq!(0, c.get(c0).unwrap().0);
+            assert_eq!(2, c.get(c1).unwrap().0);
+            assert_eq!(0, c.get(c2).unwrap().0);
+
+            exit.send(AppExit);
+        }
+
+        App::new()
+            .add_plugin(Aery)
+            .add_systems((init, run, test).chain())
+            .run();
+    }
+
+    #[test]
+    fn left_scarce_permutations_x() {
+        fn init(world: &mut World) {
+            let entities = [
+                world.spawn(A(0)).id(),
+                world.spawn(A(0)).id(),
+                world.spawn(A(0)).id(),
+                //
+                world.spawn(B(0)).id(),
+                world.spawn(B(0)).id(),
+                world.spawn(B(0)).id(),
+                //
+                world.spawn(C(0)).id(),
+                world.spawn(C(0)).id(),
+                world.spawn(C(0)).id(),
+            ];
+
+            let [a0, _, a2, _, b1, _, c0, _, c2] = entities;
+
+            let left = world.spawn(S).id();
+
+            world.set::<R0>(left, a0);
+            world.set::<R0>(left, a2);
+            world.set::<R1>(left, b1);
+            world.set::<R2>(left, c0);
+            world.set::<R2>(left, c2);
+
+            world.insert_resource(EntityList { entities });
+        }
+
+        fn run(
+            left: Query<(&S, Relations<(R0, R1, R2)>)>,
+            mut a: Query<&mut A>,
+            mut b: Query<&mut B>,
+            mut c: Query<&mut C>,
+        ) {
+            left.ops()
+                .join::<R0>(&mut a)
+                .join::<R1>(&mut b)
+                .join::<R2>(&mut c)
+                .for_each(|_, (mut a, mut b, mut c)| {
+                    a.0 += 1;
+                    b.0 += 1;
+                    c.0 += 1;
+                });
+        }
+
+        fn test(
+            mut exit: EventWriter<AppExit>,
+            entity_list: Res<EntityList>,
+            a: Query<&A>,
+            b: Query<&B>,
+            c: Query<&C>,
+        ) {
+            let [a0, a1, a2, b0, b1, b2, c0, c1, c2] = entity_list.entities;
+
+            assert_eq!(2, a.get(a0).unwrap().0);
+            assert_eq!(0, a.get(a1).unwrap().0);
+            assert_eq!(2, a.get(a2).unwrap().0);
+
+            assert_eq!(0, b.get(b0).unwrap().0);
+            assert_eq!(4, b.get(b1).unwrap().0);
+            assert_eq!(0, b.get(b2).unwrap().0);
+
+            assert_eq!(2, c.get(c0).unwrap().0);
+            assert_eq!(0, c.get(c1).unwrap().0);
+            assert_eq!(2, c.get(c2).unwrap().0);
+
+            exit.send(AppExit);
+        }
+
+        App::new()
+            .add_plugin(Aery)
+            .add_systems((init, run, test).chain())
+            .run();
+    }
+
+    #[test]
+    fn left_abundant_permutations_o() {
+        fn init(world: &mut World) {
+            let entities = [
+                world.spawn_empty().id(),
+                world.spawn(A(0)).id(),
+                world.spawn_empty().id(),
+                //
+                world.spawn(B(0)).id(),
+                world.spawn_empty().id(),
+                world.spawn(B(0)).id(),
+                //
+                world.spawn_empty().id(),
+                world.spawn(C(0)).id(),
+                world.spawn_empty().id(),
+            ];
+
+            let [a0, a1, a2, b0, b1, b2, c0, c1, c2] = entities;
+
+            let left = world.spawn(S).id();
+
+            world.set::<R0>(left, a0);
+            world.set::<R0>(left, a1);
+            world.set::<R0>(left, a2);
+            world.set::<R1>(left, b0);
+            world.set::<R1>(left, b1);
+            world.set::<R1>(left, b2);
+            world.set::<R2>(left, c0);
+            world.set::<R2>(left, c1);
+            world.set::<R2>(left, c2);
+
+            world.insert_resource(EntityList { entities });
+        }
+
+        fn run(
+            left: Query<(&S, Relations<(R0, R1, R2)>)>,
+            mut a: Query<&mut A>,
+            mut b: Query<&mut B>,
+            mut c: Query<&mut C>,
+        ) {
+            left.ops()
+                .join::<R0>(&mut a)
+                .join::<R1>(&mut b)
+                .join::<R2>(&mut c)
+                .for_each(|_, (mut a, mut b, mut c)| {
+                    a.0 += 1;
+                    b.0 += 1;
+                    c.0 += 1;
+                });
+        }
+
+        fn test(
+            mut exit: EventWriter<AppExit>,
+            entity_list: Res<EntityList>,
+            a: Query<&A>,
+            b: Query<&B>,
+            c: Query<&C>,
+        ) {
+            let [_, a1, _, b0, _, b2, _, c1, _] = entity_list.entities;
+
+            assert_eq!(2, a.get(a1).unwrap().0);
+            assert_eq!(1, b.get(b0).unwrap().0);
+            assert_eq!(1, b.get(b2).unwrap().0);
+            assert_eq!(2, c.get(c1).unwrap().0);
+
+            exit.send(AppExit);
+        }
+
+        App::new()
+            .add_plugin(Aery)
+            .add_systems((init, run, test).chain())
+            .run();
+    }
+
+    #[test]
+    fn left_abundant_permutations_x() {
+        fn init(world: &mut World) {
+            let entities = [
+                world.spawn(A(0)).id(),
+                world.spawn_empty().id(),
+                world.spawn(A(0)).id(),
+                //
+                world.spawn_empty().id(),
+                world.spawn(B(0)).id(),
+                world.spawn_empty().id(),
+                //
+                world.spawn(C(0)).id(),
+                world.spawn_empty().id(),
+                world.spawn(C(0)).id(),
+            ];
+
+            let [a0, a1, a2, b0, b1, b2, c0, c1, c2] = entities;
+
+            let left = world.spawn(S).id();
+
+            world.set::<R0>(left, a0);
+            world.set::<R0>(left, a1);
+            world.set::<R0>(left, a2);
+            world.set::<R1>(left, b0);
+            world.set::<R1>(left, b1);
+            world.set::<R1>(left, b2);
+            world.set::<R2>(left, c0);
+            world.set::<R2>(left, c1);
+            world.set::<R2>(left, c2);
+
+            world.insert_resource(EntityList { entities });
+        }
+
+        fn run(
+            left: Query<(&S, Relations<(R0, R1, R2)>)>,
+            mut a: Query<&mut A>,
+            mut b: Query<&mut B>,
+            mut c: Query<&mut C>,
+        ) {
+            left.ops()
+                .join::<R0>(&mut a)
+                .join::<R1>(&mut b)
+                .join::<R2>(&mut c)
+                .for_each(|_, (mut a, mut b, mut c)| {
+                    a.0 += 1;
+                    b.0 += 1;
+                    c.0 += 1;
+                });
+        }
+
+        fn test(
+            mut exit: EventWriter<AppExit>,
+            entity_list: Res<EntityList>,
+            a: Query<&A>,
+            b: Query<&B>,
+            c: Query<&C>,
+        ) {
+            let [a0, _, a2, _, b1, _, c0, _, c2] = entity_list.entities;
+
+            assert_eq!(2, a.get(a0).unwrap().0);
+            assert_eq!(2, a.get(a2).unwrap().0);
+            assert_eq!(4, b.get(b1).unwrap().0);
+            assert_eq!(2, c.get(c0).unwrap().0);
+            assert_eq!(2, c.get(c2).unwrap().0);
+
+            exit.send(AppExit);
+        }
+
+        App::new()
+            .add_plugin(Aery)
+            .add_systems((init, run, test).chain())
+            .run();
     }
 }

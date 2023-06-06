@@ -918,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn orphan_in() {
+    fn orphan_in_despawned() {
         struct R;
 
         impl Relation for R {
@@ -939,7 +939,7 @@ mod tests {
     }
 
     #[test]
-    fn orphan_out() {
+    fn orphan_out_despawned() {
         struct R;
 
         impl Relation for R {
@@ -960,7 +960,7 @@ mod tests {
     }
 
     #[test]
-    fn counted_in() {
+    fn counted_in_despawned() {
         struct R;
 
         impl Relation for R {
@@ -980,7 +980,7 @@ mod tests {
     }
 
     #[test]
-    fn counted_out() {
+    fn counted_out_despawned() {
         struct R;
 
         impl Relation for R {
@@ -1001,7 +1001,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_in() {
+    fn recursive_in_despawned() {
         struct R;
 
         impl Relation for R {
@@ -1022,7 +1022,7 @@ mod tests {
     }
 
     #[test]
-    fn recursive_out() {
+    fn recursive_out_despawned() {
         struct R;
 
         impl Relation for R {
@@ -1042,7 +1042,7 @@ mod tests {
     }
 
     #[test]
-    fn total_in() {
+    fn total_in_despawned() {
         struct R;
 
         impl Relation for R {
@@ -1062,7 +1062,7 @@ mod tests {
     }
 
     #[test]
-    fn total_out() {
+    fn total_out_despawned() {
         struct R;
 
         impl Relation for R {
