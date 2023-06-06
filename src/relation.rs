@@ -210,7 +210,7 @@ pub(crate) struct RefragmentHooks {
     hooks: HashMap<TypeId, fn(&mut World, Entity)>,
 }
 
-/// Command to set relationships between entities. Use convenience function [`set`].
+/// Command to set relationships between entities. See convenience trait [`SetExt`].
 pub struct Set<R>
 where
     R: Relation,
@@ -328,7 +328,7 @@ impl SetExt for World {
     }
 }
 
-/// Command to remove relationships between entities.
+/// Command to remove relationships between entities. See convenience trait [`UnsetExt`].
 pub struct Unset<R>
 where
     R: Relation,

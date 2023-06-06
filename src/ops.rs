@@ -168,9 +168,9 @@ where
 /// ```
 /// What the Archetypes/Tables should look like:
 ///
-/// | entityid  | A | Root<R> |
-/// |-----------|---|---------|
-/// | 0         | _ | _       |
+/// | entityid  | A | `Root<R>` |
+/// |-----------|---|-----------|
+/// | 0         | _ | _         |
 ///
 /// *Note:* `Root<_>` markers are automatically added and removed by the provided commands for
 /// convenient traversing.
