@@ -40,14 +40,15 @@
 //! }
 //! ```
 
-pub mod ops;
+pub mod operations;
 pub mod relation;
 pub mod tuple_traits;
 
 pub mod prelude {
     pub use crate::{
-        ops::{
-            AeryQueryExt, BreadthFirst, ControlFlow, InnerForEach, Join, Relations, TrappedForEach,
+        operations::{
+            AeryQueryExt, BreadthFirst, ControlFlow, ForEachPermutations,
+            ForEachPermutations3Arity, Join, Relations,
         },
         relation::{
             CheckedDespawn, CheckedDespawnExt, CleanupPolicy, Participates, Relation, Root, SetExt,
