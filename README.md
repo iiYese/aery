@@ -2,7 +2,6 @@
 Non-fragmenting (slight misnomer) ZST relations for Bevy.
 
 [![Crates.io](https://img.shields.io/crates/v/aery)](https://crates.io/crates/aery)
-[![MIT](https://img.shields.io/crates/l/aery)](https://github.com/iiYese/aery/blob/main/LICENSE)
 [![Docs.rs](https://img.shields.io/docsrs/aery)](https://docs.rs/aery/latest/aery/)
 
 ```rs
