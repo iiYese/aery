@@ -22,13 +22,11 @@ struct A;
 #[derive(Component)]
 struct B;
 
+#[derive(Relation)]
 struct R0;
 
-impl Relation for R0 {}
-
+#[derive(Relation)]
 struct R1;
-
-impl Relation for R1 {}
 
 fn sys(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, roots: Query<Entity, Root<R1>>) {
     left.ops()

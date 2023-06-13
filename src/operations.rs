@@ -135,9 +135,8 @@ where
 /// #[derive(Component)]
 /// struct A;
 ///
+/// #[derive(Relation)]
 /// struct R;
-///
-/// impl Relation for R {}
 ///
 /// fn setup(mut commands: Commands) {
 ///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| commands.spawn_empty().id());
@@ -237,15 +236,13 @@ where
 /// #[derive(Component)]
 /// struct C(&'static str);
 ///
+/// #[derive(Relation)]
 /// struct R0;
 ///
-/// impl Relation for R0 {}
 ///
+/// #[derive(Relation)]
+/// #[multi]
 /// struct R1;
-///
-/// impl Relation for R1 {
-///     const EXCLUSIVE: bool = false;
-/// }
 ///
 /// fn sys(a: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
 ///     a.ops()
@@ -351,9 +348,8 @@ where
 ///     // ..
 /// }
 ///
+/// #[derive(Relation)]
 /// struct R;
-///
-/// impl Relation for R {}
 ///
 /// fn predicate(a: &A, b: &B) -> bool {
 ///     # true // amongus
@@ -555,7 +551,7 @@ where
                 continue
             };
 
-            for e in relations.edges.edges.iter_fosters::<T>() {
+            for e in relations.edges.edges.iter_hosts::<T>() {
                 let Ok(joined_queries) = self.control.get(e) else {
                     continue
                 };
@@ -565,7 +561,7 @@ where
                 }
             }
 
-            for e in relations.edges.edges.iter_fosters::<T>() {
+            for e in relations.edges.edges.iter_hosts::<T>() {
                 queue.push_back(e);
             }
         }
@@ -610,7 +606,7 @@ where
                 continue
             };
 
-            for e in relations.edges.edges.iter_fosters::<T>() {
+            for e in relations.edges.edges.iter_hosts::<T>() {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(joined_queries) = (unsafe { self.control.get_unchecked(e) }) else {
                     continue
@@ -621,7 +617,7 @@ where
                 }
             }
 
-            for e in relations.edges.edges.iter_fosters::<T>() {
+            for e in relations.edges.edges.iter_hosts::<T>() {
                 queue.push_back(e);
             }
         }
@@ -690,7 +686,7 @@ where
                 continue
             };
 
-            for descendant in ancestor_edges.edges.edges.iter_fosters::<T>() {
+            for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
                 let Ok((mut descendant, descendant_edges)) = self.control.get(descendant) else {
                     continue
                 };
@@ -723,7 +719,7 @@ where
                 }
             }
 
-            for e in ancestor_edges.edges.edges.iter_fosters::<T>() {
+            for e in ancestor_edges.edges.edges.iter_hosts::<T>() {
                 queue.push_back(e);
             }
         }
@@ -775,7 +771,7 @@ where
                 continue
             };
 
-            for descendant in ancestor_edges.edges.edges.iter_fosters::<T>() {
+            for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok((mut descendant, descendant_edges)) = (unsafe {
                     self.control.get_unchecked(descendant)
@@ -810,7 +806,7 @@ where
                     }
                 }
             }
-            for e in ancestor_edges.edges.edges.iter_fosters::<T>() {
+            for e in ancestor_edges.edges.edges.iter_hosts::<T>() {
                 queue.push_back(e);
             }
         }
@@ -821,7 +817,7 @@ where
 #[allow(dead_code)]
 #[allow(unused_variables)]
 mod compile_tests {
-    use super::*;
+    use crate::prelude::*;
     use bevy::prelude::*;
 
     #[derive(Component)]
@@ -833,13 +829,13 @@ mod compile_tests {
     #[derive(Component)]
     struct C;
 
+    #[derive(Relation)]
+    #[cleanup(policy = "Counted")]
+    #[multi]
     struct R0;
 
-    impl Relation for R0 {}
-
+    #[derive(Relation)]
     struct R1;
-
-    impl Relation for R1 {}
 
     fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
         left.ops()
@@ -924,23 +920,17 @@ mod tests {
     #[derive(Component, Debug)]
     struct C(i32);
 
+    #[derive(Relation)]
+    #[multi]
     struct R0;
 
-    impl Relation for R0 {
-        const EXCLUSIVE: bool = false;
-    }
-
+    #[derive(Relation)]
+    #[multi]
     struct R1;
 
-    impl Relation for R1 {
-        const EXCLUSIVE: bool = false;
-    }
-
+    #[derive(Relation)]
+    #[multi]
     struct R2;
-
-    impl Relation for R2 {
-        const EXCLUSIVE: bool = false;
-    }
 
     #[derive(Resource)]
     struct EntityList {
