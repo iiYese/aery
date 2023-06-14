@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["iiYese iiyese@outlook.com"]
 repository = "https://github.com/iiYese/aery"
 description = "Non-fragmenting ZST relations for Bevy."
+keywords = ["bevy", "relations", "game", "ecs"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 

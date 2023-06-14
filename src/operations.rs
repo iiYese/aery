@@ -28,7 +28,6 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
             .find_map(|(n, matches)| (!matches).then_some(n))
             .unwrap_or(N);
 
-        // Reset iterators after first unmatched item from the last permutation to reduce iteration
         for i in (1..N).skip(n) {
             self.live_iterators[i] = self.base_iterators[i].clone();
             self.entities[i] = self.live_iterators[i].next();
@@ -55,7 +54,7 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
     }
 }
 
-/// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single
+/// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
 /// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
 /// to use relation operations and no type may appear more than once for operations to work.*
 /// See [`AeryQueryExt`] for operations.
@@ -85,7 +84,7 @@ where
     _phantom: PhantomData<(T, E)>,
 }
 
-/// An extension trait to turn `Query<(L, Relations<R>)>`s into [`Operations`]s which have the
+/// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
 /// trait implementations to build relation operations. This query is called the "control query".
 /// The [`RelationSet`] `R` from this query is what is used for joins and traversals any `T` in a
 /// subsequent `.join::<T>(_)` or `.beadth_first::<T>(_)` call must be present in `R`.
@@ -126,7 +125,12 @@ where
 /// `breadth_first::<T>(roots)` must be present in the [`RelationSet`] of the control query.
 /// Diamonds are impossible with `Exclusive` relations where the edges face bottom up instead of
 /// top down. For this reason bottom up graphs are the only pattern that is recognized for
-/// traversal. See [`Join`] for joining queries.
+/// traversal.
+/// Uses:
+/// - [`ForEachPermutations`] for operations with just traversals.
+/// - [`ForEachPermutations3Arity`] for operations with traversals and joins.
+///
+/// See [`Join`] for joining queries.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -164,9 +168,14 @@ where
 /// }
 ///
 /// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
-///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a| {
+///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a_ancestor, a| {
 ///         // Will traverse in the following order:
-///         // 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6
+///         // (a_ancestor, a): (0, 1)
+///         // (a_ancestor, a): (0, 2)
+///         // (a_ancestor, a): (1, 3)
+///         // (a_ancestor, a): (1, 4)
+///         // (a_ancestor, a): (2, 5)
+///         // (a_ancestor, a): (2, 6)
 ///     })
 /// }
 /// ```
@@ -221,7 +230,11 @@ where
 /// A trait to implement the `join` functionality of the operations API. Any `T` in
 /// `join::<T>(query)` must be present in the [`RelationSet`] of the control query. The type of
 /// join performed is what's known as an "inner join" which produces permutations of all matched
-/// entiteis. See [`BreadthFirst`] for traversing hierarchies.
+/// entiteis.
+/// - [`ForEachPermutations`] for operations with just joins.
+/// - [`ForEachPermutations3Arity`] for operations with joins and traversals.
+///
+/// See [`BreadthFirst`] for traversing hierarchies.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -375,16 +388,10 @@ pub enum ControlFlow {
     Exit,
     /// FastForward(n) will advance the nth join to the next match skipping any premutations
     /// inbetween where it currently is and the next permutation where it was supposed to advance.
-    /// ```
-    /// use todo_example;
-    /// ```
     FastForward(usize),
     /// Walks to the next entity in the traversal skipping any remaining permutations to iterate.
     /// - For beadth first traversals this is the next entity in the walk path.
     /// - Otherwise it's a linear traversal through the query items and this is the next entity.
-    /// ```
-    /// use todo_example;
-    /// ```
     Walk,
 }
 
@@ -414,9 +421,6 @@ impl From<()> for ControlFlow {
 ///
 /// See [`ControlFlow`] for control flow options and [`ForEachPermutations3Arity`] for the loop
 /// behavior of operations with hierarchy traversals and 1 or more join.
-/// ```
-/// use todo_example;
-/// ```
 pub trait ForEachPermutations<const N: usize> {
     type Left<'l>;
     type Right<'r>;
@@ -627,8 +631,10 @@ where
 /// A 3 arity version of [`ForEachPermutations`] for when operations feature a traversal with 1 or
 /// more joins. Will iterate through hierarchy permutations and join permutations together.
 /// - The left paramater will be an ancestor entity.
-/// - The middle parameter will be a decendant of the ancestor.
-/// - The right parameter will be a tuple of all the query fetch parameters from joined queries.
+/// - The middle parameter will be a descendant of the ancestor.
+/// - The right parameter will be a tuple of all the query fetch parameters from joined queries
+/// where the entity being joined on is the descendant. The traversal relation is essentially
+/// treated as another join paramter where the query being joined on is the control query.
 pub trait ForEachPermutations3Arity<const N: usize> {
     type Left<'l>;
     type Middle<'m>;

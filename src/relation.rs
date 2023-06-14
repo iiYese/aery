@@ -6,6 +6,7 @@ use bevy::{
         system::{Command, Commands, Resource},
         world::World,
     },
+    log::warn,
     utils::{HashMap, HashSet},
 };
 
@@ -206,7 +207,8 @@ pub(crate) struct RefragmentHooks {
     hooks: HashMap<TypeId, fn(&mut World, Entity)>,
 }
 
-/// Command to set relationships between entities. See convenience trait [`SetExt`].
+/// Command to set relationships between entities. If either of the participants do not exist or the
+/// host tries to target itself the operation will be ignored and logged.
 pub struct Set<R>
 where
     R: Relation,
@@ -222,17 +224,37 @@ where
 {
     fn write(self, world: &mut World) {
         if self.host == self.target {
-            // TODO: Logging
+            warn!(
+                "Tried to set {} from {:?} to itself. \
+                Self referential relations are not allowed. \
+                Ignoring.",
+                std::any::type_name::<R>(),
+                self.host,
+            );
             return;
         }
 
         if world.get_entity(self.target).is_none() {
-            // TODO: Logging
+            warn!(
+                "Tried to set {rel} from {from:?} to {to:?}. \
+                {to:?} does not exist. \
+                Ignoring.",
+                rel = std::any::type_name::<R>(),
+                from = self.host,
+                to = self.target,
+            );
             return;
         }
 
         if world.get_entity(self.host).is_none() {
-            // TODO: Logging
+            warn!(
+                "Tried to set {rel} from {from:?} to {to:?}. \
+                {from:?} does not exist. \
+                Ignoring.",
+                rel = std::any::type_name::<R>(),
+                from = self.host,
+                to = self.target,
+            );
             return;
         }
 
@@ -296,35 +318,9 @@ where
     }
 }
 
-/// Convenience trait to sugar adding relations.
-pub trait SetExt {
-    fn set<R: Relation>(&mut self, host: Entity, target: Entity);
-}
-
-impl SetExt for Commands<'_, '_> {
-    fn set<R: Relation>(&mut self, host: Entity, target: Entity) {
-        self.add(Set::<R> {
-            host,
-            target,
-            _phantom: PhantomData,
-        });
-    }
-}
-
-impl SetExt for World {
-    fn set<R: Relation>(&mut self, host: Entity, target: Entity) {
-        Command::write(
-            Set::<R> {
-                host,
-                target,
-                _phantom: PhantomData,
-            },
-            self,
-        );
-    }
-}
-
-/// Command to remove relationships between entities. See convenience trait [`UnsetExt`].
+/// Command to remove relationships between entities
+/// This operation is not noisy so if either participant does not exist or
+/// the relation does not exist nothing happens.
 pub struct Unset<R>
 where
     R: Relation,
@@ -435,31 +431,61 @@ impl Command for UnsetErased {
     }
 }
 
-/// Convenience trait to sugar removing relations.
-pub trait UnsetExt {
-    fn unset<R: Relation>(&mut self, host: Entity, target: Entity);
+/// Command for entities to to unset all targets of a given relation.
+pub struct UnsetAll<R>
+where
+    R: Relation,
+{
+    pub entity: Entity,
+    pub _phantom: PhantomData<R>,
 }
 
-impl UnsetExt for Commands<'_, '_> {
-    fn unset<R: Relation>(&mut self, host: Entity, target: Entity) {
-        self.add(Unset::<R> {
-            host,
-            target,
-            _phantom: PhantomData,
-        });
+impl<R: Relation> Command for UnsetAll<R> {
+    fn write(self, world: &mut World) {
+        while let Some(target) = world
+            .get::<Edges>(self.entity)
+            .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
+            .and_then(|targets| targets.first())
+            .copied()
+        {
+            Command::write(
+                Unset::<R> {
+                    target,
+                    host: self.entity,
+                    _phantom: PhantomData,
+                },
+                world,
+            );
+        }
     }
 }
 
-impl UnsetExt for World {
-    fn unset<R: Relation>(&mut self, host: Entity, target: Entity) {
-        Command::write(
-            Unset::<R> {
-                host,
-                target,
-                _phantom: PhantomData,
-            },
-            self,
-        );
+/// Command for entities to unset themselves from all relations of a given type.
+pub struct Withdraw<R>
+where
+    R: Relation,
+{
+    pub entity: Entity,
+    pub _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Command for Withdraw<R> {
+    fn write(self, world: &mut World) {
+        while let Some(host) = world
+            .get::<Edges>(self.entity)
+            .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
+            .and_then(|targets| targets.first())
+            .copied()
+        {
+            Command::write(
+                Unset::<R> {
+                    host,
+                    target: self.entity,
+                    _phantom: PhantomData,
+                },
+                world,
+            );
+        }
     }
 }
 
@@ -661,18 +687,107 @@ impl Command for CheckedDespawn {
     }
 }
 
-/// Convenience trait to sugar despawning entities while checking for relations.
-pub trait CheckedDespawnExt {
+/// Convenience trait to sugar using relation commands. Can be used with `World` or `Commands`.
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn sys(mut commands: Commands) {
+///     let a = commands.spawn_empty().id();
+///     let b = commands.spawn_empty().id();
+///     commands.set::<R>(a, b);
+/// }
+/// ```
+pub trait RelationCommands {
+    fn set<R: Relation>(&mut self, host: Entity, target: Entity);
+    fn unset<R: Relation>(&mut self, host: Entity, target: Entity);
+    fn unset_all<R: Relation>(&mut self, entity: Entity);
+    fn withdraw<R: Relation>(&mut self, entity: Entity);
     fn checked_despawn(&mut self, entity: Entity);
 }
 
-impl CheckedDespawnExt for Commands<'_, '_> {
+impl RelationCommands for Commands<'_, '_> {
+    fn set<R: Relation>(&mut self, host: Entity, target: Entity) {
+        self.add(Set::<R> {
+            host,
+            target,
+            _phantom: PhantomData,
+        });
+    }
+
+    fn unset<R: Relation>(&mut self, host: Entity, target: Entity) {
+        self.add(Unset::<R> {
+            host,
+            target,
+            _phantom: PhantomData,
+        });
+    }
+
+    fn unset_all<R: Relation>(&mut self, entity: Entity) {
+        self.add(UnsetAll::<R> {
+            entity,
+            _phantom: PhantomData,
+        });
+    }
+
+    fn withdraw<R: Relation>(&mut self, entity: Entity) {
+        self.add(Withdraw::<R> {
+            entity,
+            _phantom: PhantomData,
+        });
+    }
+
     fn checked_despawn(&mut self, entity: Entity) {
         self.add(CheckedDespawn { entity });
     }
 }
 
-impl CheckedDespawnExt for World {
+impl RelationCommands for World {
+    fn set<R: Relation>(&mut self, host: Entity, target: Entity) {
+        Command::write(
+            Set::<R> {
+                host,
+                target,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
+    fn unset<R: Relation>(&mut self, host: Entity, target: Entity) {
+        Command::write(
+            Unset::<R> {
+                host,
+                target,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
+    fn unset_all<R: Relation>(&mut self, entity: Entity) {
+        Command::write(
+            UnsetAll::<R> {
+                entity,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
+    fn withdraw<R: Relation>(&mut self, entity: Entity) {
+        Command::write(
+            Withdraw::<R> {
+                entity,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
     fn checked_despawn(&mut self, entity: Entity) {
         Command::write(CheckedDespawn { entity }, self);
     }
