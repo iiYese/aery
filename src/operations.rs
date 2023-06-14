@@ -21,8 +21,8 @@ pub struct EdgeProduct<'a, const N: usize> {
 }
 
 impl<'a, const N: usize> EdgeProduct<'a, N> {
-    fn advance(&mut self, matches: [bool; N]) -> Option<[Entity; N]> {
-        let n = matches
+    fn advance(&mut self, prev_matches: [bool; N]) -> Option<[Entity; N]> {
+        let n = prev_matches
             .iter()
             .enumerate()
             .find_map(|(n, matches)| (!matches).then_some(n))
@@ -33,11 +33,11 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
             self.entities[i] = self.live_iterators[i].next();
         }
 
-        'l: {
+        'next_permutation: {
             for i in (1..N).take(n).rev() {
                 if let Some(entity) = self.live_iterators[i].next() {
                     self.entities[i] = Some(entity);
-                    break 'l;
+                    break 'next_permutation;
                 } else {
                     self.live_iterators[i] = self.base_iterators[i].clone();
                     self.entities[i] = self.live_iterators[i].next();
@@ -54,9 +54,10 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
     }
 }
 
-/// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single
+/// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
 /// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
-/// to use relation operations.* See [`AeryQueryExt`] for how to use operations.
+/// to use relation operations and no type may appear more than once for operations to work.*
+/// See [`AeryQueryExt`] for operations.
 #[derive(WorldQuery)]
 pub struct Relations<R: RelationSet> {
     pub(crate) edges: EdgeWQ,
@@ -65,10 +66,10 @@ pub struct Relations<R: RelationSet> {
 }
 
 /// Struct that is used to track metadata for relation operations.
-pub struct Ops<Left, Joins = (), Right = (), Traversal = ()> {
-    left: Left,
-    joins: PhantomData<Joins>,
-    right: Right,
+pub struct Operations<Control, JoinedTypes = (), JoinedQueries = (), Traversal = ()> {
+    control: Control,
+    joined_types: PhantomData<JoinedTypes>,
+    joined_queries: JoinedQueries,
     traversal: Traversal,
 }
 
@@ -83,13 +84,16 @@ where
     _phantom: PhantomData<(T, E)>,
 }
 
-/// Trait to turn a [`Query`] into an [`Ops`] struct so relation operations can be performed.
-/// See [`Join`] and [`BreadthFirst`] for how to perform joins and traversals.
+/// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
+/// trait implementations to build relation operations. This query is called the "control query".
+/// The [`RelationSet`] `R` from this query is what is used for joins and traversals any `T` in a
+/// subsequent `.join::<T>(_)` or `.beadth_first::<T>(_)` call must be present in `R`.
+/// Also see [`Join`] and [`BreadthFirst`].
 pub trait AeryQueryExt {
     /// Provides read only access to the left portion of the [`Query`] tuple.
-    fn ops(&self) -> Ops<&Self>;
+    fn ops(&self) -> Operations<&Self>;
     /// Provides mutable access to the left portion of the [`Query`] tuple.
-    fn ops_mut(&mut self) -> Ops<&mut Self>;
+    fn ops_mut(&mut self) -> Operations<&mut Self>;
 }
 
 impl<'w, 's, Q, F, R> AeryQueryExt for Query<'w, 's, (Q, Relations<R>), F>
@@ -98,30 +102,35 @@ where
     F: ReadOnlyWorldQuery,
     R: RelationSet + Send + Sync,
 {
-    fn ops(&self) -> Ops<&Self> {
-        Ops {
-            left: self,
-            joins: PhantomData,
-            right: (),
+    fn ops(&self) -> Operations<&Self> {
+        Operations {
+            control: self,
+            joined_types: PhantomData,
+            joined_queries: (),
             traversal: (),
         }
     }
 
-    fn ops_mut(&mut self) -> Ops<&mut Self> {
-        Ops {
-            left: self,
-            joins: PhantomData,
-            right: (),
+    fn ops_mut(&mut self) -> Operations<&mut Self> {
+        Operations {
+            control: self,
+            joined_types: PhantomData,
+            joined_queries: (),
             traversal: (),
         }
     }
 }
 
-/// Trait to implement the `breadth_first` functionality of the operations API. Any `T` in
-/// `breadth_first::<T>(roots)` must be present in the `Relations<(..)>` parameter of a query.
+/// A trait to implement the `breadth_first` functionality of the operations API. Any `T` in
+/// `breadth_first::<T>(roots)` must be present in the [`RelationSet`] of the control query.
 /// Diamonds are impossible with `Exclusive` relations where the edges face bottom up instead of
 /// top down. For this reason bottom up graphs are the only pattern that is recognized for
-/// traversal. See [`Join`] for performing joins.
+/// traversal.
+/// Uses:
+/// - [`ForEachPermutations`] for operations with just traversals.
+/// - [`ForEachPermutations3Arity`] for operations with traversals and joins.
+///
+/// See [`Join`] for joining queries.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -130,9 +139,8 @@ where
 /// #[derive(Component)]
 /// struct A;
 ///
+/// #[derive(Relation)]
 /// struct R;
-///
-/// impl Relation for R {}
 ///
 /// fn setup(mut commands: Commands) {
 ///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| commands.spawn_empty().id());
@@ -160,9 +168,14 @@ where
 /// }
 ///
 /// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
-///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a| {
+///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a_ancestor, a| {
 ///         // Will traverse in the following order:
-///         // 0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 6
+///         // (a_ancestor, a): (0, 1)
+///         // (a_ancestor, a): (0, 2)
+///         // (a_ancestor, a): (1, 3)
+///         // (a_ancestor, a): (1, 4)
+///         // (a_ancestor, a): (2, 5)
+///         // (a_ancestor, a): (2, 6)
 ///     })
 /// }
 /// ```
@@ -192,17 +205,20 @@ where
     fn breadth_first<T: Relation>(self, roots: I) -> Self::Out<T>;
 }
 
-impl<Left, Joins, Right, Traversal, E, I> BreadthFirst<E, I> for Ops<Left, Joins, Right, Traversal>
+impl<Control, JoinedTypes, JoinedQueries, Traversal, E, I> BreadthFirst<E, I>
+    for Operations<Control, JoinedTypes, JoinedQueries, Traversal>
 where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
-    type Out<T: Relation> = Ops<Left, Joins, Right, BreadthFirstTraversal<T, E, I>>;
+    type Out<T: Relation> =
+        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstTraversal<T, E, I>>;
+
     fn breadth_first<T: Relation>(self, roots: I) -> Self::Out<T> {
-        Ops {
-            left: self.left,
-            joins: self.joins,
-            right: self.right,
+        Operations {
+            control: self.control,
+            joined_types: self.joined_types,
+            joined_queries: self.joined_queries,
             traversal: BreadthFirstTraversal {
                 roots,
                 _phantom: PhantomData,
@@ -211,12 +227,14 @@ where
     }
 }
 
-/// Trait to implement the `join` functionality of the operations API. Any `T` in `join::<T>(query)`
-/// must be present in the `Relations<(..)>` parameter of a query. The type of join performed is
-/// what's known as an "inner join" which produces permutations of all matched entiteis.
-/// The presence of any join operation will make the `for_each` closure 2 arity instead of 1 where
-/// the 2nd parameter is a tuple of components from matched entities.
-/// See [`BreadthFirst`] for how to perform traversals.
+/// A trait to implement the `join` functionality of the operations API. Any `T` in
+/// `join::<T>(query)` must be present in the [`RelationSet`] of the control query. The type of
+/// join performed is what's known as an "inner join" which produces permutations of all matched
+/// entiteis.
+/// - [`ForEachPermutations`] for operations with just joins.
+/// - [`ForEachPermutations3Arity`] for operations with joins and traversals.
+///
+/// See [`BreadthFirst`] for traversing hierarchies.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -231,15 +249,13 @@ where
 /// #[derive(Component)]
 /// struct C(&'static str);
 ///
+/// #[derive(Relation)]
 /// struct R0;
 ///
-/// impl Relation for R0 {}
 ///
+/// #[derive(Relation)]
+/// #[multi]
 /// struct R1;
-///
-/// impl Relation for R1 {
-///     const EXCLUSIVE: bool = false;
-/// }
 ///
 /// fn sys(a: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
 ///     a.ops()
@@ -307,27 +323,31 @@ where
     fn join<T: Relation>(self, item: Item) -> Self::Out<T>;
 }
 
-impl<Item, Left, Joins, Right, Traversal> Join<Item> for Ops<Left, Joins, Right, Traversal>
+impl<Item, Control, JoinedTypes, JoinedQueries, Traversal> Join<Item>
+    for Operations<Control, JoinedTypes, JoinedQueries, Traversal>
 where
     Item: for<'a> Joinable<'a, 1>,
-    Joins: Append,
-    Right: Append,
+    JoinedTypes: Append,
+    JoinedQueries: Append,
 {
-    type Out<T: Relation> =
-        Ops<Left, <Joins as Append>::Out<T>, <Right as Append>::Out<Item>, Traversal>;
+    type Out<T: Relation> = Operations<
+        Control,
+        <JoinedTypes as Append>::Out<T>,
+        <JoinedQueries as Append>::Out<Item>,
+        Traversal,
+    >;
 
     fn join<T: Relation>(self, item: Item) -> Self::Out<T> {
-        Ops {
-            left: self.left,
-            joins: PhantomData,
-            right: Append::append(self.right, item),
+        Operations {
+            control: self.control,
+            joined_types: PhantomData,
+            joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
         }
     }
 }
 
-/// Control flow enum to allow continue and early return semantics for [`TrappedForEach`] and
-/// [`InnerForEach`].
+/// Control flow enum for [`ForEachPermutations`] and [`ForEachPermutations3Arity`].
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
@@ -341,9 +361,8 @@ where
 ///     // ..
 /// }
 ///
+/// #[derive(Relation)]
 /// struct R;
-///
-/// impl Relation for R {}
 ///
 /// fn predicate(a: &A, b: &B) -> bool {
 ///     # true // amongus
@@ -356,15 +375,24 @@ where
 ///             return ControlFlow::Exit;
 ///         }
 ///
-///         // () impls Into<ControlFlow> for convenience. Return types still need to be the same
-///         // so providing this is nessecary when doing any controlflow manipulation.
+///         // `()` impls Into<ControlFlow> for convenience. Return types still need to be the same
+///         // so explicitly providing this is nessecary when doing any controlflow manipulation.
 ///         ControlFlow::Continue
 ///     })
 /// }
 /// ```
 pub enum ControlFlow {
+    /// Continue to next permutation.
     Continue,
+    /// Stop iterating permutatiosn and exit loop.
     Exit,
+    /// FastForward(n) will advance the nth join to the next match skipping any premutations
+    /// inbetween where it currently is and the next permutation where it was supposed to advance.
+    FastForward(usize),
+    /// Walks to the next entity in the traversal skipping any remaining permutations to iterate.
+    /// - For beadth first traversals this is the next entity in the walk path.
+    /// - Otherwise it's a linear traversal through the query items and this is the next entity.
+    Walk,
 }
 
 impl From<()> for ControlFlow {
@@ -373,185 +401,132 @@ impl From<()> for ControlFlow {
     }
 }
 
-/// For each trait to get around lending Iterators not being expressible with current GATs. When
-/// traversing diamonds or cycles references to the same entities components can be produced more
-/// than once which is why this problem cannot be solved with `unsafe`. So instead it is made so
-/// that params provided to the closure cannot escape the closure. Traversing without joins is a
-/// common usecase so this variation is distinct from [`InnerForEach`] to allow `1` arity closures.
-/// See [`ControlFlow`] for control flow options.
-pub trait TrappedForEach {
-    type In<'i>;
-    fn for_each<Func, Ret>(self, func: Func)
-    where
-        Ret: Into<ControlFlow>,
-        Func: FnMut(Self::In<'_>) -> Ret;
-}
-
-impl<Q, R, F, T, E, I> TrappedForEach
-    for Ops<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), BreadthFirstTraversal<T, E, I>>
-where
-    Q: WorldQuery,
-    R: RelationSet,
-    F: ReadOnlyWorldQuery,
-    T: Relation,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
-{
-    type In<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
-    fn for_each<Func, Ret>(self, mut func: Func)
-    where
-        Ret: Into<ControlFlow>,
-        Func: FnMut(Self::In<'_>) -> Ret,
-    {
-        let mut queue = self
-            .traversal
-            .roots
-            .into_iter()
-            .map(|e| *e.borrow())
-            .collect::<VecDeque<Entity>>();
-
-        while let Some(entity) = queue.pop_front() {
-            let Ok((left, relations)) = self.left.get(entity) else {
-                continue
-            };
-
-            for e in relations.edges.edges.iter_fosters::<T>() {
-                queue.push_back(e);
-            }
-
-            if let ControlFlow::Exit = func(left).into() {
-                return;
-            }
-        }
-    }
-}
-
-impl<Q, R, F, T, E, I> TrappedForEach
-    for Ops<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), BreadthFirstTraversal<T, E, I>>
-where
-    Q: WorldQuery,
-    R: RelationSet,
-    F: ReadOnlyWorldQuery,
-    T: Relation,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
-{
-    type In<'i> = <Q as WorldQuery>::Item<'i>;
-    fn for_each<Func, Ret>(self, mut func: Func)
-    where
-        Ret: Into<ControlFlow>,
-        Func: FnMut(Self::In<'_>) -> Ret,
-    {
-        let mut queue = self
-            .traversal
-            .roots
-            .into_iter()
-            .map(|e| *e.borrow())
-            .collect::<VecDeque<Entity>>();
-
-        while let Some(entity) = queue.pop_front() {
-            let Ok((left, relations)) = self.left.get_mut(entity) else {
-                continue
-            };
-
-            for e in relations.edges.edges.iter_fosters::<T>() {
-                queue.push_back(e);
-            }
-
-            if let ControlFlow::Exit = func(left).into() {
-                return;
-            }
-        }
-    }
-}
-
-/// For each trait to loop through inner joins. Like [`TrappedForEach`] the parameters provided to
-/// the closure cannot escape the closure. This will give the caller only matched entities and skip
-/// over entities not present in a joined query. Any `.join::<T>(query)` call will result in an
-/// innner joined `for_each` call. See [`ControlFlow`] for control flow options.
-pub trait InnerForEach<const N: usize> {
+/// A for each trait to get around lending Iterators not being expressible with current GATs.
+/// When iterating:
+/// - Diamonds
+/// - Cycles
+/// - Joins where multiple entities have the same target
+///
+/// References to the same entities components can be produced more than once which is why this
+/// problem cannot be solved with `unsafe`. So to work around this "lifetime trapping" is used
+/// instead. The closure parameters cannot escape the closure.
+///
+/// For any control query `Query<(X, Relations<..>)>`:
+/// - If there is only joins: Permutations of valid entities from the joined queries will be looped
+/// through. The left parameter will be the `X` item and the right parameter will be a tuple of all
+/// the query fetch parameters from the joined queries.
+/// - If there is only hierarchy traversals: Traversable ancestor-descendant permutations that
+/// belong to the control query will be looped through. The left parameter will be the `X` item of
+/// an ancestor and the right parameter will be the `X` item of an immediate descendant.
+///
+/// See [`ControlFlow`] for control flow options and [`ForEachPermutations3Arity`] for the loop
+/// behavior of operations with hierarchy traversals and 1 or more join.
+pub trait ForEachPermutations<const N: usize> {
     type Left<'l>;
     type Right<'r>;
+
     fn for_each<Func, Ret>(self, func: Func)
     where
         Ret: Into<ControlFlow>,
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret;
 }
 
-impl<Q, R, F, Joins, Right, const N: usize> InnerForEach<N>
-    for Ops<&'_ Query<'_, '_, (Q, Relations<R>), F>, Joins, Right, ()>
+impl<Q, R, F, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations<N>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, ()>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    Joins: Product<N>,
-    Right: for<'a> Joinable<'a, N>,
+    JoinedTypes: Product<N>,
+    JoinedQueries: for<'a> Joinable<'a, N>,
 {
     type Left<'l> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'l>;
-    type Right<'r> = <Right as Joinable<'r, N>>::Out;
+    type Right<'r> = <JoinedQueries as Joinable<'r, N>>::Out;
+
     fn for_each<Func, Ret>(mut self, mut func: Func)
     where
         Ret: Into<ControlFlow>,
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
     {
-        for (mut left, relations) in self.left.iter() {
-            let mut edge_product = Joins::product(relations.edges);
+        for (mut control, relations) in self.control.iter() {
+            let mut edge_product = JoinedTypes::product(relations.edges);
             let mut matches = [false; N];
+
             while let Some(entities) = edge_product.advance(matches) {
-                matches = Joinable::check(&self.right, entities);
+                matches = Joinable::check(&self.joined_queries, entities);
 
                 if matches.iter().any(|b| !b) {
                     continue;
                 }
 
-                if let ControlFlow::Exit =
-                    func(&mut left, Joinable::join(&mut self.right, entities)).into()
+                match func(
+                    &mut control,
+                    Joinable::join(&mut self.joined_queries, entities),
+                )
+                .into()
                 {
-                    return;
+                    ControlFlow::Continue => {}
+                    ControlFlow::Exit => return,
+                    ControlFlow::Walk => break,
+                    ControlFlow::FastForward(n) if n < N => {
+                        matches[n] = false;
+                    }
+                    _ => {}
                 }
             }
         }
     }
 }
 
-impl<Q, R, F, Joins, Right, const N: usize> InnerForEach<N>
-    for Ops<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, Joins, Right, ()>
+impl<Q, R, F, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations<N>
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, ()>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    Joins: Product<N>,
-    Right: for<'a> Joinable<'a, N>,
+    JoinedTypes: Product<N>,
+    JoinedQueries: for<'a> Joinable<'a, N>,
 {
     type Left<'l> = <Q as WorldQuery>::Item<'l>;
-    type Right<'r> = <Right as Joinable<'r, N>>::Out;
+    type Right<'r> = <JoinedQueries as Joinable<'r, N>>::Out;
+
     fn for_each<Func, Ret>(mut self, mut func: Func)
     where
         Ret: Into<ControlFlow>,
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
     {
-        for (mut left, relations) in self.left.iter_mut() {
-            let mut edge_product = Joins::product(relations.edges);
+        for (mut control, relations) in self.control.iter_mut() {
+            let mut edge_product = JoinedTypes::product(relations.edges);
             let mut matches = [false; N];
+
             while let Some(entities) = edge_product.advance(matches) {
-                matches = Joinable::check(&self.right, entities);
+                matches = Joinable::check(&self.joined_queries, entities);
 
                 if matches.iter().any(|b| !b) {
                     continue;
                 }
 
-                if let ControlFlow::Exit =
-                    func(&mut left, Joinable::join(&mut self.right, entities)).into()
+                match func(
+                    &mut control,
+                    Joinable::join(&mut self.joined_queries, entities),
+                )
+                .into()
                 {
-                    return;
+                    ControlFlow::Continue => {}
+                    ControlFlow::Exit => return,
+                    ControlFlow::Walk => break,
+                    ControlFlow::FastForward(n) if n < N => {
+                        matches[n] = false;
+                    }
+                    _ => {}
                 }
             }
         }
     }
 }
 
-impl<Q, R, F, T, E, I, Joins, Right, const N: usize> InnerForEach<N>
-    for Ops<&'_ Query<'_, '_, (Q, Relations<R>), F>, Joins, Right, BreadthFirstTraversal<T, E, I>>
+impl<Q, R, F, T, E, I> ForEachPermutations<0>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), BreadthFirstTraversal<T, E, I>>
 where
     Q: WorldQuery,
     R: RelationSet,
@@ -559,12 +534,11 @@ where
     T: Relation,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
-    Joins: Product<N>,
-    Right: for<'a> Joinable<'a, N>,
 {
     type Left<'l> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'l>;
-    type Right<'r> = <Right as Joinable<'r, N>>::Out;
-    fn for_each<Func, Ret>(mut self, mut func: Func)
+    type Right<'r> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'r>;
+
+    fn for_each<Func, Ret>(self, mut func: Func)
     where
         Ret: Into<ControlFlow>,
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
@@ -577,39 +551,32 @@ where
             .collect::<VecDeque<Entity>>();
 
         while let Some(entity) = queue.pop_front() {
-            let Ok((mut left, relations)) = self.left.get(entity) else {
+            let Ok((mut control, relations)) = self.control.get(entity) else {
                 continue
             };
 
-            for e in relations.edges.edges.iter_fosters::<T>() {
-                queue.push_back(e);
-            }
+            for e in relations.edges.edges.iter_hosts::<T>() {
+                let Ok(joined_queries) = self.control.get(e) else {
+                    continue
+                };
 
-            let mut edge_product = Joins::product(relations.edges);
-            let mut matches = [false; N];
-
-            while let Some(entities) = edge_product.advance(matches) {
-                matches = Joinable::check(&self.right, entities);
-
-                if matches.iter().any(|b| !b) {
-                    continue;
-                }
-
-                if let ControlFlow::Exit =
-                    func(&mut left, Joinable::join(&mut self.right, entities)).into()
-                {
+                if let ControlFlow::Exit = func(&mut control, joined_queries.0).into() {
                     return;
                 }
+            }
+
+            for e in relations.edges.edges.iter_hosts::<T>() {
+                queue.push_back(e);
             }
         }
     }
 }
 
-impl<Q, R, F, T, E, I, Joins, Right, const N: usize> InnerForEach<N>
-    for Ops<
+impl<Q, R, F, T, E, I> ForEachPermutations<0>
+    for Operations<
         &'_ mut Query<'_, '_, (Q, Relations<R>), F>,
-        Joins,
-        Right,
+        (),
+        (),
         BreadthFirstTraversal<T, E, I>,
     >
 where
@@ -619,12 +586,11 @@ where
     T: Relation,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
-    Joins: Product<N>,
-    Right: for<'a> Joinable<'a, N>,
 {
     type Left<'l> = <Q as WorldQuery>::Item<'l>;
-    type Right<'r> = <Right as Joinable<'r, N>>::Out;
-    fn for_each<Func, Ret>(mut self, mut func: Func)
+    type Right<'r> = <Q as WorldQuery>::Item<'r>;
+
+    fn for_each<Func, Ret>(self, mut func: Func)
     where
         Ret: Into<ControlFlow>,
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
@@ -637,29 +603,217 @@ where
             .collect::<VecDeque<Entity>>();
 
         while let Some(entity) = queue.pop_front() {
-            let Ok((mut left, relations)) = self.left.get_mut(entity) else {
+            // SAFETY: Self referential relations are impossible so this is always safe.
+            let Ok((mut control, relations)) = (unsafe {
+                self.control.get_unchecked(entity)
+            }) else {
                 continue
             };
 
-            for e in relations.edges.edges.iter_fosters::<T>() {
-                queue.push_back(e);
-            }
+            for e in relations.edges.edges.iter_hosts::<T>() {
+                // SAFETY: Self referential relations are impossible so this is always safe.
+                let Ok(joined_queries) = (unsafe { self.control.get_unchecked(e) }) else {
+                    continue
+                };
 
-            let mut edge_product = Joins::product(relations.edges);
-            let mut matches = [false; N];
-
-            while let Some(entities) = edge_product.advance(matches) {
-                matches = Joinable::check(&self.right, entities);
-
-                if matches.iter().any(|b| !b) {
-                    continue;
-                }
-
-                if let ControlFlow::Exit =
-                    func(&mut left, Joinable::join(&mut self.right, entities)).into()
-                {
+                if let ControlFlow::Exit = func(&mut control, joined_queries.0).into() {
                     return;
                 }
+            }
+
+            for e in relations.edges.edges.iter_hosts::<T>() {
+                queue.push_back(e);
+            }
+        }
+    }
+}
+
+/// A 3 arity version of [`ForEachPermutations`] for when operations feature a traversal with 1 or
+/// more joins. Will iterate through hierarchy permutations and join permutations together.
+/// - The left paramater will be an ancestor entity.
+/// - The middle parameter will be a descendant of the ancestor.
+/// - The right parameter will be a tuple of all the query fetch parameters from joined queries
+/// where the entity being joined on is the descendant. The traversal relation is essentially
+/// treated as another join paramter where the query being joined on is the control query.
+pub trait ForEachPermutations3Arity<const N: usize> {
+    type Left<'l>;
+    type Middle<'m>;
+    type Right<'r>;
+
+    fn for_each<Func, Ret>(self, func: Func)
+    where
+        Ret: Into<ControlFlow>,
+        Func: for<'f, 'l, 'm, 'r> FnMut(
+            &'f mut Self::Left<'l>,
+            &'f mut Self::Middle<'m>,
+            Self::Right<'r>,
+        ) -> Ret;
+}
+
+impl<Q, R, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
+    for Operations<
+        &'_ Query<'_, '_, (Q, Relations<R>), F>,
+        JoinedTypes,
+        JoinedQueries,
+        BreadthFirstTraversal<T, E, I>,
+    >
+where
+    Q: WorldQuery,
+    R: RelationSet,
+    F: ReadOnlyWorldQuery,
+    T: Relation,
+    E: Borrow<Entity>,
+    I: IntoIterator<Item = E>,
+    JoinedTypes: Product<N>,
+    JoinedQueries: for<'a> Joinable<'a, N>,
+{
+    type Left<'l> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'l>;
+    type Middle<'m> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'m>;
+    type Right<'r> = <JoinedQueries as Joinable<'r, N>>::Out;
+
+    fn for_each<Func, Ret>(mut self, mut func: Func)
+    where
+        Ret: Into<ControlFlow>,
+        Func: for<'f, 'l, 'm, 'r> FnMut(
+            &'f mut Self::Left<'l>,
+            &'f mut Self::Middle<'m>,
+            Self::Right<'r>,
+        ) -> Ret,
+    {
+        let mut queue = self
+            .traversal
+            .roots
+            .into_iter()
+            .map(|e| *e.borrow())
+            .collect::<VecDeque<Entity>>();
+
+        while let Some(entity) = queue.pop_front() {
+            let Ok((mut ancestor, ancestor_edges)) = self.control.get(entity) else {
+                continue
+            };
+
+            for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
+                let Ok((mut descendant, descendant_edges)) = self.control.get(descendant) else {
+                    continue
+                };
+
+                let mut edge_product = JoinedTypes::product(descendant_edges.edges);
+                let mut matches = [false; N];
+
+                while let Some(entities) = edge_product.advance(matches) {
+                    matches = Joinable::check(&self.joined_queries, entities);
+
+                    if matches.iter().any(|b| !b) {
+                        continue;
+                    }
+
+                    match func(
+                        &mut ancestor,
+                        &mut descendant,
+                        Joinable::join(&mut self.joined_queries, entities),
+                    )
+                    .into()
+                    {
+                        ControlFlow::Continue => {}
+                        ControlFlow::Exit => return,
+                        ControlFlow::Walk => break,
+                        ControlFlow::FastForward(n) if n < N => {
+                            matches[n] = false;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            for e in ancestor_edges.edges.edges.iter_hosts::<T>() {
+                queue.push_back(e);
+            }
+        }
+    }
+}
+
+impl<Q, R, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
+    for Operations<
+        &'_ mut Query<'_, '_, (Q, Relations<R>), F>,
+        JoinedTypes,
+        JoinedQueries,
+        BreadthFirstTraversal<T, E, I>,
+    >
+where
+    Q: WorldQuery,
+    R: RelationSet,
+    F: ReadOnlyWorldQuery,
+    T: Relation,
+    E: Borrow<Entity>,
+    I: IntoIterator<Item = E>,
+    JoinedTypes: Product<N>,
+    JoinedQueries: for<'a> Joinable<'a, N>,
+{
+    type Left<'l> = <Q as WorldQuery>::Item<'l>;
+    type Middle<'m> = <Q as WorldQuery>::Item<'m>;
+    type Right<'r> = <JoinedQueries as Joinable<'r, N>>::Out;
+
+    fn for_each<Func, Ret>(mut self, mut func: Func)
+    where
+        Ret: Into<ControlFlow>,
+        Func: for<'f, 'l, 'm, 'r> FnMut(
+            &'f mut Self::Left<'l>,
+            &'f mut Self::Middle<'m>,
+            Self::Right<'r>,
+        ) -> Ret,
+    {
+        let mut queue = self
+            .traversal
+            .roots
+            .into_iter()
+            .map(|e| *e.borrow())
+            .collect::<VecDeque<Entity>>();
+
+        while let Some(entity) = queue.pop_front() {
+            // SAFETY: Self referential relations are impossible so this is always safe.
+            let Ok((mut ancestor, ancestor_edges)) = (unsafe {
+                self.control.get_unchecked(entity)
+            }) else {
+                continue
+            };
+
+            for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
+                // SAFETY: Self referential relations are impossible so this is always safe.
+                let Ok((mut descendant, descendant_edges)) = (unsafe {
+                    self.control.get_unchecked(descendant)
+                }) else {
+                    continue
+                };
+
+                let mut edge_product = JoinedTypes::product(descendant_edges.edges);
+                let mut matches = [false; N];
+
+                while let Some(entities) = edge_product.advance(matches) {
+                    matches = Joinable::check(&self.joined_queries, entities);
+
+                    if matches.iter().any(|b| !b) {
+                        continue;
+                    }
+
+                    match func(
+                        &mut ancestor,
+                        &mut descendant,
+                        Joinable::join(&mut self.joined_queries, entities),
+                    )
+                    .into()
+                    {
+                        ControlFlow::Continue => {}
+                        ControlFlow::Exit => return,
+                        ControlFlow::Walk => break,
+                        ControlFlow::FastForward(n) if n < N => {
+                            matches[n] = false;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            for e in ancestor_edges.edges.edges.iter_hosts::<T>() {
+                queue.push_back(e);
             }
         }
     }
@@ -669,7 +823,7 @@ where
 #[allow(dead_code)]
 #[allow(unused_variables)]
 mod compile_tests {
-    use super::*;
+    use crate::prelude::*;
     use bevy::prelude::*;
 
     #[derive(Component)]
@@ -681,13 +835,13 @@ mod compile_tests {
     #[derive(Component)]
     struct C;
 
+    #[derive(Relation)]
+    #[cleanup(policy = "Counted")]
+    #[multi]
     struct R0;
 
-    impl Relation for R0 {}
-
+    #[derive(Relation)]
     struct R1;
-
-    impl Relation for R1 {}
 
     fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
         left.ops()
@@ -728,20 +882,20 @@ mod compile_tests {
     fn breadth_first_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.ops()
             .breadth_first::<R0>(None::<Entity>)
-            .for_each(|a| {});
+            .for_each(|a0, a1| {});
     }
 
     fn breadth_first_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
             .breadth_first::<R0>(None::<Entity>)
             .join::<R1>(&right)
-            .for_each(|a, b| {});
+            .for_each(|a0, a1, b| {});
     }
 
     fn breadth_first_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
         left.ops_mut()
             .breadth_first::<R0>(None::<Entity>)
-            .for_each(|a| {});
+            .for_each(|a0, a1| {});
     }
 
     fn breadth_first_mut_joined_mut(
@@ -751,7 +905,7 @@ mod compile_tests {
         left.ops()
             .breadth_first::<R0>(None::<Entity>)
             .join::<R1>(&mut right)
-            .for_each(|a, b| {});
+            .for_each(|a0, a1, b| {});
     }
 }
 
@@ -772,23 +926,17 @@ mod tests {
     #[derive(Component, Debug)]
     struct C(i32);
 
+    #[derive(Relation)]
+    #[multi]
     struct R0;
 
-    impl Relation for R0 {
-        const EXCLUSIVE: bool = false;
-    }
-
+    #[derive(Relation)]
+    #[multi]
     struct R1;
 
-    impl Relation for R1 {
-        const EXCLUSIVE: bool = false;
-    }
-
+    #[derive(Relation)]
+    #[multi]
     struct R2;
-
-    impl Relation for R2 {
-        const EXCLUSIVE: bool = false;
-    }
 
     #[derive(Resource)]
     struct EntityList {

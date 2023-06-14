@@ -1,5 +1,5 @@
 use crate::{
-    ops::EdgeProduct,
+    operations::EdgeProduct,
     relation::{EdgeWQItem, Participates, Relation},
 };
 use bevy::{

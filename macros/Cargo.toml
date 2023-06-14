@@ -1,0 +1,14 @@
+[package]
+name = "aery_macros"
+description = "Proc macros for Aery."
+version = "0.1.0-dev"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2.0"
+quote = "1.0"
+proc-macro2 = "1.0"

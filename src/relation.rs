@@ -6,6 +6,7 @@ use bevy::{
         system::{Command, Commands, Resource},
         world::World,
     },
+    log::warn,
     utils::{HashMap, HashSet},
 };
 
@@ -46,17 +47,13 @@ pub struct Participates<R: Relation> {
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
 ///
+/// #[derive(Relation)]
+/// #[cleanup(policy = "Orphan")]
 /// struct O;
 ///
-/// impl Relation for O {
-///     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-/// }
-///
+/// #[derive(Relation)]
+/// #[cleanup(policy = "Recursive")]
 /// struct R;
-///
-/// impl Relation for R {
-///     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
-/// }
 ///
 /// fn sys(world: &mut World) {
 ///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| world.spawn_empty().id());
@@ -98,11 +95,11 @@ pub struct Participates<R: Relation> {
 pub enum CleanupPolicy {
     /// Will do no further cleanup.
     Orphan,
-    /// Counted relationships "count" the number of fosters they have. If it ever reaches zero they
+    /// Counted relationships "count" the number of hosts they have. If it ever reaches zero they
     /// will delete themselves. This is effectively reference counting.
     Counted,
     /// When targets of recursively cleaning relations are deleted they also delete all their
-    /// fosters. Unsetting a recursively cleaning relation is the same as despawning the foster.
+    /// hosts. Unsetting a recursively cleaning relation is the same as despawning the host.
     Recursive,
     /// Total performs both counted and recursive cleanup.
     Total,
@@ -116,7 +113,7 @@ pub trait Relation: 'static + Send + Sync {
 
 #[derive(Component, Default, Debug)]
 pub(crate) struct Edges {
-    pub fosters: [HashMap<TypeId, IndexSet<Entity>>; 4],
+    pub hosts: [HashMap<TypeId, IndexSet<Entity>>; 4],
     pub targets: [HashMap<TypeId, IndexSet<Entity>>; 4],
 }
 
@@ -130,8 +127,8 @@ type EdgeIter<'a> = std::iter::Flatten<
 >;
 
 impl Edges {
-    pub(crate) fn iter_fosters<R: Relation>(&self) -> EdgeIter<'_> {
-        self.fosters[R::CLEANUP_POLICY as usize]
+    pub(crate) fn iter_hosts<R: Relation>(&self) -> EdgeIter<'_> {
+        self.hosts[R::CLEANUP_POLICY as usize]
             .get(&TypeId::of::<R>())
             .map(|targets| targets.iter().copied())
             .into_iter()
@@ -152,10 +149,10 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
         return
     };
 
-    let (has_fosters, has_targets) = (
-        edges.fosters[R::CLEANUP_POLICY as usize]
+    let (has_hosts, has_targets) = (
+        edges.hosts[R::CLEANUP_POLICY as usize]
             .get(&TypeId::of::<R>())
-            .map(|fosters| !fosters.is_empty())
+            .map(|hosts| !hosts.is_empty())
             .unwrap_or(false),
         edges.targets[R::CLEANUP_POLICY as usize]
             .get(&TypeId::of::<R>())
@@ -163,8 +160,8 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
             .unwrap_or(false),
     );
 
-    if !has_fosters {
-        edges.fosters[R::CLEANUP_POLICY as usize].remove(&TypeId::of::<R>());
+    if !has_hosts {
+        edges.hosts[R::CLEANUP_POLICY as usize].remove(&TypeId::of::<R>());
     }
 
     if !has_targets {
@@ -174,13 +171,13 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
     if edges
         .targets
         .iter()
-        .chain(edges.fosters.iter())
+        .chain(edges.hosts.iter())
         .all(HashMap::is_empty)
     {
         world.entity_mut(entity).remove::<Edges>();
     }
 
-    match (has_fosters, has_targets) {
+    match (has_hosts, has_targets) {
         (_, true) => {
             world
                 .entity_mut(entity)
@@ -210,12 +207,13 @@ pub(crate) struct RefragmentHooks {
     hooks: HashMap<TypeId, fn(&mut World, Entity)>,
 }
 
-/// Command to set relationships between entities. See convenience trait [`SetExt`].
+/// Command to set relationships between entities. If either of the participants do not exist or the
+/// host tries to target itself the operation will be ignored and logged.
 pub struct Set<R>
 where
     R: Relation,
 {
-    pub foster: Entity,
+    pub host: Entity,
     pub target: Entity,
     pub _phantom: PhantomData<R>,
 }
@@ -225,18 +223,38 @@ where
     R: Relation,
 {
     fn write(self, world: &mut World) {
-        if self.foster == self.target {
-            // TODO: Logging
+        if self.host == self.target {
+            warn!(
+                "Tried to set {} from {:?} to itself. \
+                Self referential relations are not allowed. \
+                Ignoring.",
+                std::any::type_name::<R>(),
+                self.host,
+            );
             return;
         }
 
         if world.get_entity(self.target).is_none() {
-            // TODO: Logging
+            warn!(
+                "Tried to set {rel} from {from:?} to {to:?}. \
+                {to:?} does not exist. \
+                Ignoring.",
+                rel = std::any::type_name::<R>(),
+                from = self.host,
+                to = self.target,
+            );
             return;
         }
 
-        if world.get_entity(self.foster).is_none() {
-            // TODO: Logging
+        if world.get_entity(self.host).is_none() {
+            warn!(
+                "Tried to set {rel} from {from:?} to {to:?}. \
+                {from:?} does not exist. \
+                Ignoring.",
+                rel = std::any::type_name::<R>(),
+                from = self.host,
+                to = self.target,
+            );
             return;
         }
 
@@ -250,10 +268,10 @@ where
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
 
-        target_edges.fosters[R::CLEANUP_POLICY as usize]
+        target_edges.hosts[R::CLEANUP_POLICY as usize]
             .entry(TypeId::of::<R>())
             .or_default()
-            .insert(self.foster);
+            .insert(self.host);
 
         if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&TypeId::of::<R>()) {
             world.entity_mut(self.target).insert(RootMarker::<R> {
@@ -263,25 +281,25 @@ where
 
         world.entity_mut(self.target).insert(target_edges);
 
-        let mut foster_edges = world
-            .entity_mut(self.foster)
+        let mut host_edges = world
+            .entity_mut(self.host)
             .remove::<RootMarker<R>>()
             .get_mut::<Edges>()
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
 
-        let old = foster_edges.targets[R::CLEANUP_POLICY as usize]
+        let old = host_edges.targets[R::CLEANUP_POLICY as usize]
             .get(&TypeId::of::<R>())
             .and_then(|targets| targets.first())
             .copied();
 
-        foster_edges.targets[R::CLEANUP_POLICY as usize]
+        host_edges.targets[R::CLEANUP_POLICY as usize]
             .entry(TypeId::of::<R>())
             .or_default()
             .insert(self.target);
 
-        world.entity_mut(self.foster).insert((
-            foster_edges,
+        world.entity_mut(self.host).insert((
+            host_edges,
             Participant::<R> {
                 _phantom: PhantomData,
             },
@@ -290,7 +308,7 @@ where
         if let Some(old) = old.filter(|old| R::EXCLUSIVE && self.target != *old) {
             Command::write(
                 Unset::<R> {
-                    foster: self.foster,
+                    host: self.host,
                     target: old,
                     _phantom: PhantomData,
                 },
@@ -300,40 +318,14 @@ where
     }
 }
 
-/// Convenience trait to sugar adding relations.
-pub trait SetExt {
-    fn set<R: Relation>(&mut self, foster: Entity, target: Entity);
-}
-
-impl SetExt for Commands<'_, '_> {
-    fn set<R: Relation>(&mut self, foster: Entity, target: Entity) {
-        self.add(Set::<R> {
-            foster,
-            target,
-            _phantom: PhantomData,
-        });
-    }
-}
-
-impl SetExt for World {
-    fn set<R: Relation>(&mut self, foster: Entity, target: Entity) {
-        Command::write(
-            Set::<R> {
-                foster,
-                target,
-                _phantom: PhantomData,
-            },
-            self,
-        );
-    }
-}
-
-/// Command to remove relationships between entities. See convenience trait [`UnsetExt`].
+/// Command to remove relationships between entities
+/// This operation is not noisy so if either participant does not exist or
+/// the relation does not exist nothing happens.
 pub struct Unset<R>
 where
     R: Relation,
 {
-    pub foster: Entity,
+    pub host: Entity,
     pub target: Entity,
     pub _phantom: PhantomData<R>,
 }
@@ -342,7 +334,7 @@ impl<R: Relation> Command for Unset<R> {
     fn write(self, world: &mut World) {
         Command::write(
             UnsetErased {
-                foster: self.foster,
+                host: self.host,
                 target: self.target,
                 typeid: TypeId::of::<R>(),
                 policy: R::CLEANUP_POLICY,
@@ -353,7 +345,7 @@ impl<R: Relation> Command for Unset<R> {
 }
 
 struct UnsetErased {
-    foster: Entity,
+    host: Entity,
     target: Entity,
     typeid: TypeId,
     policy: CleanupPolicy,
@@ -370,8 +362,8 @@ impl Command for UnsetErased {
             return
         };
 
-        let Some(mut foster_edges) = world
-            .get_mut::<Edges>(self.foster)
+        let Some(mut host_edges) = world
+            .get_mut::<Edges>(self.host)
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
             return
@@ -381,41 +373,36 @@ impl Command for UnsetErased {
             .get_mut::<Edges>(self.target)
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
-            world.entity_mut(self.foster).insert(foster_edges);
+            world.entity_mut(self.host).insert(host_edges);
             return
         };
 
-        foster_edges.targets[self.policy as usize]
+        host_edges.targets[self.policy as usize]
             .entry(self.typeid)
-            .and_modify(|fosters| {
-                fosters.remove(&self.target);
+            .and_modify(|hosts| {
+                hosts.remove(&self.target);
             });
 
-        target_edges.fosters[self.policy as usize]
+        target_edges.hosts[self.policy as usize]
             .entry(self.typeid)
-            .and_modify(|fosters| {
-                fosters.remove(&self.foster);
+            .and_modify(|hosts| {
+                hosts.remove(&self.host);
             });
 
-        let target_orphaned = target_edges.fosters[self.policy as usize]
+        let target_orphaned = target_edges.hosts[self.policy as usize]
             .get(&self.typeid)
             .map_or(false, IndexSet::is_empty);
 
-        world.entity_mut(self.foster).insert(foster_edges);
+        world.entity_mut(self.host).insert(host_edges);
         world.entity_mut(self.target).insert(target_edges);
 
         match self.policy {
             CleanupPolicy::Orphan => {
-                refragment(world, self.foster);
+                refragment(world, self.host);
                 refragment(world, self.target);
             }
             CleanupPolicy::Recursive => {
-                Command::write(
-                    CheckedDespawn {
-                        entity: self.foster,
-                    },
-                    world,
-                );
+                Command::write(CheckedDespawn { entity: self.host }, world);
                 refragment(world, self.target);
             }
             CleanupPolicy::Counted => {
@@ -427,15 +414,10 @@ impl Command for UnsetErased {
                         world,
                     );
                 }
-                refragment(world, self.foster);
+                refragment(world, self.host);
             }
             CleanupPolicy::Total => {
-                Command::write(
-                    CheckedDespawn {
-                        entity: self.foster,
-                    },
-                    world,
-                );
+                Command::write(CheckedDespawn { entity: self.host }, world);
                 if target_orphaned {
                     Command::write(
                         CheckedDespawn {
@@ -449,31 +431,61 @@ impl Command for UnsetErased {
     }
 }
 
-/// Convenience trait to sugar removing relations.
-pub trait UnsetExt {
-    fn unset<R: Relation>(&mut self, foster: Entity, target: Entity);
+/// Command for entities to to unset all targets of a given relation.
+pub struct UnsetAll<R>
+where
+    R: Relation,
+{
+    pub entity: Entity,
+    pub _phantom: PhantomData<R>,
 }
 
-impl UnsetExt for Commands<'_, '_> {
-    fn unset<R: Relation>(&mut self, foster: Entity, target: Entity) {
-        self.add(Unset::<R> {
-            foster,
-            target,
-            _phantom: PhantomData,
-        });
+impl<R: Relation> Command for UnsetAll<R> {
+    fn write(self, world: &mut World) {
+        while let Some(target) = world
+            .get::<Edges>(self.entity)
+            .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
+            .and_then(|targets| targets.first())
+            .copied()
+        {
+            Command::write(
+                Unset::<R> {
+                    target,
+                    host: self.entity,
+                    _phantom: PhantomData,
+                },
+                world,
+            );
+        }
     }
 }
 
-impl UnsetExt for World {
-    fn unset<R: Relation>(&mut self, foster: Entity, target: Entity) {
-        Command::write(
-            Unset::<R> {
-                foster,
-                target,
-                _phantom: PhantomData,
-            },
-            self,
-        );
+/// Command for entities to unset themselves from all relations of a given type.
+pub struct Withdraw<R>
+where
+    R: Relation,
+{
+    pub entity: Entity,
+    pub _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Command for Withdraw<R> {
+    fn write(self, world: &mut World) {
+        while let Some(host) = world
+            .get::<Edges>(self.entity)
+            .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
+            .and_then(|targets| targets.first())
+            .copied()
+        {
+            Command::write(
+                Unset::<R> {
+                    host,
+                    target: self.entity,
+                    _phantom: PhantomData,
+                },
+                world,
+            );
+        }
     }
 }
 
@@ -508,37 +520,37 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let Some(target_fosters) = target_edges
-                    .fosters[CleanupPolicy::Total as usize]
+                let Some(target_hosts) = target_edges
+                    .hosts[CleanupPolicy::Total as usize]
                     .get_mut(typeid)
                 else {
                     continue
                 };
 
-                target_fosters.remove(&curr);
+                target_hosts.remove(&curr);
 
-                if target_fosters.is_empty() {
+                if target_hosts.is_empty() {
                     queue.push_back(*target);
                     to_despawn.insert(*target);
                 }
             }
 
-            for (typeid, foster) in edges.fosters[CleanupPolicy::Total as usize]
+            for (typeid, host) in edges.hosts[CleanupPolicy::Total as usize]
                 .iter()
-                .flat_map(|(typeid, fosters)| fosters.iter().map(move |foster| (typeid, foster)))
+                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
-                let Ok(mut foster_edges) = graph.get_mut(world, *foster) else {
+                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                foster_edges.targets[CleanupPolicy::Total as usize]
+                host_edges.targets[CleanupPolicy::Total as usize]
                     .entry(*typeid)
                     .and_modify(|bucket| {
                         bucket.remove(&curr);
                     });
 
-                queue.push_back(*foster);
-                to_despawn.insert(*foster);
+                queue.push_back(*host);
+                to_despawn.insert(*host);
             }
 
             // Recursive relations
@@ -550,33 +562,33 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let Some(target_fosters) = target_edges
-                    .fosters[CleanupPolicy::Recursive as usize]
+                let Some(target_hosts) = target_edges
+                    .hosts[CleanupPolicy::Recursive as usize]
                     .get_mut(typeid)
                 else {
                     continue
                 };
 
-                target_fosters.remove(&curr);
+                target_hosts.remove(&curr);
                 to_refrag.entry(*typeid).or_default().insert(*target);
             }
 
-            for (typeid, foster) in edges.fosters[CleanupPolicy::Recursive as usize]
+            for (typeid, host) in edges.hosts[CleanupPolicy::Recursive as usize]
                 .iter()
-                .flat_map(|(typeid, fosters)| fosters.iter().map(move |foster| (typeid, foster)))
+                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
-                let Ok(mut foster_edges) = graph.get_mut(world, *foster) else {
+                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                foster_edges.targets[CleanupPolicy::Recursive as usize]
+                host_edges.targets[CleanupPolicy::Recursive as usize]
                     .entry(*typeid)
                     .and_modify(|bucket| {
                         bucket.remove(&curr);
                     });
 
-                queue.push_back(*foster);
-                to_despawn.insert(*foster);
+                queue.push_back(*host);
+                to_despawn.insert(*host);
             }
 
             // Counted relations
@@ -588,36 +600,36 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                let Some(target_fosters) = target_edges
-                    .fosters[CleanupPolicy::Counted as usize]
+                let Some(target_hosts) = target_edges
+                    .hosts[CleanupPolicy::Counted as usize]
                     .get_mut(typeid)
                 else {
                     continue
                 };
 
-                target_fosters.remove(&curr);
+                target_hosts.remove(&curr);
 
-                if target_fosters.is_empty() {
+                if target_hosts.is_empty() {
                     queue.push_back(*target);
                     to_despawn.insert(*target);
                 }
             }
 
-            for (typeid, foster) in edges.fosters[CleanupPolicy::Counted as usize]
+            for (typeid, host) in edges.hosts[CleanupPolicy::Counted as usize]
                 .iter()
-                .flat_map(|(typeid, fosters)| fosters.iter().map(move |foster| (typeid, foster)))
+                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
-                let Ok(mut foster_edges) = graph.get_mut(world, *foster) else {
+                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                foster_edges.targets[CleanupPolicy::Counted as usize]
+                host_edges.targets[CleanupPolicy::Counted as usize]
                     .entry(*typeid)
                     .and_modify(|bucket| {
                         bucket.remove(&curr);
                     });
 
-                to_refrag.entry(*typeid).or_default().insert(*foster);
+                to_refrag.entry(*typeid).or_default().insert(*host);
             }
 
             // Orphaning relations
@@ -629,7 +641,7 @@ impl Command for CheckedDespawn {
                     continue
                 };
 
-                target_edges.fosters[CleanupPolicy::Orphan as usize]
+                target_edges.hosts[CleanupPolicy::Orphan as usize]
                     .entry(*typeid)
                     .and_modify(|bucket| {
                         bucket.remove(&curr);
@@ -638,21 +650,21 @@ impl Command for CheckedDespawn {
                 to_refrag.entry(*typeid).or_default().insert(*target);
             }
 
-            for (typeid, foster) in edges.fosters[CleanupPolicy::Orphan as usize]
+            for (typeid, host) in edges.hosts[CleanupPolicy::Orphan as usize]
                 .iter()
-                .flat_map(|(typeid, fosters)| fosters.iter().map(move |foster| (typeid, foster)))
+                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
-                let Ok(mut foster_edges) = graph.get_mut(world, *foster) else {
+                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                foster_edges.targets[CleanupPolicy::Orphan as usize]
+                host_edges.targets[CleanupPolicy::Orphan as usize]
                     .entry(*typeid)
                     .and_modify(|bucket| {
                         bucket.remove(&curr);
                     });
 
-                to_refrag.entry(*typeid).or_default().insert(*foster);
+                to_refrag.entry(*typeid).or_default().insert(*host);
             }
         }
 
@@ -675,18 +687,107 @@ impl Command for CheckedDespawn {
     }
 }
 
-/// Convenience trait to sugar despawning entities while checking for relations.
-pub trait CheckedDespawnExt {
+/// Convenience trait to sugar using relation commands. Can be used with `World` or `Commands`.
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn sys(mut commands: Commands) {
+///     let a = commands.spawn_empty().id();
+///     let b = commands.spawn_empty().id();
+///     commands.set::<R>(a, b);
+/// }
+/// ```
+pub trait RelationCommands {
+    fn set<R: Relation>(&mut self, host: Entity, target: Entity);
+    fn unset<R: Relation>(&mut self, host: Entity, target: Entity);
+    fn unset_all<R: Relation>(&mut self, entity: Entity);
+    fn withdraw<R: Relation>(&mut self, entity: Entity);
     fn checked_despawn(&mut self, entity: Entity);
 }
 
-impl CheckedDespawnExt for Commands<'_, '_> {
+impl RelationCommands for Commands<'_, '_> {
+    fn set<R: Relation>(&mut self, host: Entity, target: Entity) {
+        self.add(Set::<R> {
+            host,
+            target,
+            _phantom: PhantomData,
+        });
+    }
+
+    fn unset<R: Relation>(&mut self, host: Entity, target: Entity) {
+        self.add(Unset::<R> {
+            host,
+            target,
+            _phantom: PhantomData,
+        });
+    }
+
+    fn unset_all<R: Relation>(&mut self, entity: Entity) {
+        self.add(UnsetAll::<R> {
+            entity,
+            _phantom: PhantomData,
+        });
+    }
+
+    fn withdraw<R: Relation>(&mut self, entity: Entity) {
+        self.add(Withdraw::<R> {
+            entity,
+            _phantom: PhantomData,
+        });
+    }
+
     fn checked_despawn(&mut self, entity: Entity) {
         self.add(CheckedDespawn { entity });
     }
 }
 
-impl CheckedDespawnExt for World {
+impl RelationCommands for World {
+    fn set<R: Relation>(&mut self, host: Entity, target: Entity) {
+        Command::write(
+            Set::<R> {
+                host,
+                target,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
+    fn unset<R: Relation>(&mut self, host: Entity, target: Entity) {
+        Command::write(
+            Unset::<R> {
+                host,
+                target,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
+    fn unset_all<R: Relation>(&mut self, entity: Entity) {
+        Command::write(
+            UnsetAll::<R> {
+                entity,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
+    fn withdraw<R: Relation>(&mut self, entity: Entity) {
+        Command::write(
+            Withdraw::<R> {
+                entity,
+                _phantom: PhantomData,
+            },
+            self,
+        );
+    }
+
     fn checked_despawn(&mut self, entity: Entity) {
         Command::write(CheckedDespawn { entity }, self);
     }
@@ -714,96 +815,89 @@ mod tests {
         world.get::<Participant<R>>(entity).is_some()
     }
 
-    fn targeting<R: Relation>(world: &World, foster: Entity, target: Entity) -> bool {
-        let foster_is_targeting = world
-            .get::<Edges>(foster)
+    fn targeting<R: Relation>(world: &World, host: Entity, target: Entity) -> bool {
+        let host_is_targeting = world
+            .get::<Edges>(host)
             .map(|edges| &edges.targets[R::CLEANUP_POLICY as usize])
             .and_then(|bucket| bucket.get(&TypeId::of::<R>()))
             .map_or(false, |set| set.contains(&target));
 
-        let target_is_fostered = world
+        let target_is_hosted = world
             .get::<Edges>(target)
-            .map(|edges| &edges.fosters[R::CLEANUP_POLICY as usize])
+            .map(|edges| &edges.hosts[R::CLEANUP_POLICY as usize])
             .and_then(|bucket| bucket.get(&TypeId::of::<R>()))
-            .map_or(false, |set| set.contains(&foster));
+            .map_or(false, |set| set.contains(&host));
 
-        if foster_is_targeting != target_is_fostered {
+        if host_is_targeting != target_is_hosted {
             panic!("Asymmetric edge info");
         }
 
-        foster_is_targeting
+        host_is_targeting
     }
 
     #[test]
     fn set_unset() {
+        #[derive(Relation)]
         struct R;
-
-        impl Relation for R {}
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
-        let [foster, target] = from_fn(|_| world.spawn_empty().id());
+        let [host, target] = from_fn(|_| world.spawn_empty().id());
 
-        world.set::<R>(foster, target);
-        assert!(targeting::<R>(&world, foster, target));
-        assert!(is_participant::<R>(&world, foster));
+        world.set::<R>(host, target);
+        assert!(targeting::<R>(&world, host, target));
+        assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, target));
 
-        world.unset::<R>(foster, target);
+        world.unset::<R>(host, target);
         assert!(!has_edges(&world, target));
-        assert!(!has_edges(&world, foster));
-        assert!(!is_participant::<R>(&world, foster));
+        assert!(!has_edges(&world, host));
+        assert!(!is_participant::<R>(&world, host));
         assert!(!is_root::<R>(&world, target));
     }
 
     #[test]
     fn exclusive() {
+        #[derive(Relation)]
         struct R;
-
-        impl Relation for R {}
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
-        let [foster, t0, t1] = from_fn(|_| world.spawn_empty().id());
+        let [host, t0, t1] = from_fn(|_| world.spawn_empty().id());
 
         // Before overwrite
-        world.set::<R>(foster, t0);
+        world.set::<R>(host, t0);
 
-        assert!(targeting::<R>(&world, foster, t0));
-        assert!(is_participant::<R>(&world, foster));
+        assert!(targeting::<R>(&world, host, t0));
+        assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, t0));
 
         // After overwrite
-        world.set::<R>(foster, t1);
+        world.set::<R>(host, t1);
 
-        assert!(targeting::<R>(&world, foster, t1));
-        assert!(is_participant::<R>(&world, foster));
+        assert!(targeting::<R>(&world, host, t1));
+        assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, t1));
 
         assert!(!has_edges(&world, t0));
         assert!(!is_root::<R>(&world, t0));
     }
 
+    #[derive(Relation)]
+    #[cleanup(policy = "Orphan")]
     struct Orphan;
+
+    #[derive(Relation)]
+    #[cleanup(policy = "Counted")]
     struct Counted;
+
+    #[derive(Relation)]
+    #[cleanup(policy = "Recursive")]
     struct Recursive;
+
+    #[derive(Relation)]
+    #[cleanup(policy = "Total")]
     struct Total;
-
-    impl Relation for Orphan {
-        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-    }
-
-    impl Relation for Counted {
-        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
-    }
-
-    impl Relation for Recursive {
-        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
-    }
-
-    impl Relation for Total {
-        const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
-    }
 
     #[derive(Debug)]
     struct TestEdges {
@@ -817,7 +911,7 @@ mod tests {
     struct Test {
         center: Entity,
         targets: TestEdges,
-        fosters: TestEdges,
+        hosts: TestEdges,
     }
 
     impl Test {
@@ -830,7 +924,7 @@ mod tests {
                     recursive: world.spawn_empty().id(),
                     total: world.spawn_empty().id(),
                 },
-                fosters: TestEdges {
+                hosts: TestEdges {
                     orphan: world.spawn_empty().id(),
                     counted: world.spawn_empty().id(),
                     recursive: world.spawn_empty().id(),
@@ -838,43 +932,39 @@ mod tests {
                 },
             };
 
-            world.set::<Orphan>(test.fosters.orphan, test.center);
+            world.set::<Orphan>(test.hosts.orphan, test.center);
             world.set::<Orphan>(test.center, test.targets.orphan);
 
-            world.set::<Counted>(test.fosters.counted, test.center);
+            world.set::<Counted>(test.hosts.counted, test.center);
             world.set::<Counted>(test.center, test.targets.counted);
 
-            world.set::<Recursive>(test.fosters.recursive, test.center);
+            world.set::<Recursive>(test.hosts.recursive, test.center);
             world.set::<Recursive>(test.center, test.targets.recursive);
 
-            world.set::<Total>(test.fosters.total, test.center);
+            world.set::<Total>(test.hosts.total, test.center);
             world.set::<Total>(test.center, test.targets.total);
 
             test
         }
 
         fn assert_unchanged(&self, world: &World) {
-            assert!(targeting::<Orphan>(world, self.fosters.orphan, self.center));
+            assert!(targeting::<Orphan>(world, self.hosts.orphan, self.center));
             assert!(targeting::<Orphan>(world, self.center, self.targets.orphan));
-            assert!(is_participant::<Orphan>(world, self.fosters.orphan,));
+            assert!(is_participant::<Orphan>(world, self.hosts.orphan,));
             assert!(is_root::<Orphan>(world, self.targets.orphan));
 
-            assert!(targeting::<Counted>(
-                world,
-                self.fosters.counted,
-                self.center
-            ));
+            assert!(targeting::<Counted>(world, self.hosts.counted, self.center));
             assert!(targeting::<Counted>(
                 world,
                 self.center,
                 self.targets.counted
             ));
-            assert!(is_participant::<Counted>(world, self.fosters.counted,));
+            assert!(is_participant::<Counted>(world, self.hosts.counted,));
             assert!(is_root::<Counted>(world, self.targets.counted));
 
             assert!(targeting::<Recursive>(
                 world,
-                self.fosters.recursive,
+                self.hosts.recursive,
                 self.center
             ));
             assert!(targeting::<Recursive>(
@@ -882,12 +972,12 @@ mod tests {
                 self.center,
                 self.targets.recursive
             ));
-            assert!(is_participant::<Recursive>(world, self.fosters.recursive,));
+            assert!(is_participant::<Recursive>(world, self.hosts.recursive,));
             assert!(is_root::<Recursive>(world, self.targets.recursive));
 
-            assert!(targeting::<Total>(world, self.fosters.total, self.center));
+            assert!(targeting::<Total>(world, self.hosts.total, self.center));
             assert!(targeting::<Total>(world, self.center, self.targets.total));
-            assert!(is_participant::<Total>(world, self.fosters.total));
+            assert!(is_participant::<Total>(world, self.hosts.total));
             assert!(is_root::<Total>(world, self.targets.total));
 
             assert!(is_participant::<Orphan>(world, self.center));
@@ -899,31 +989,29 @@ mod tests {
         fn assert_cleaned(&self, world: &World) {
             assert!(world.get_entity(self.center).is_none());
 
-            assert!(!has_edges(world, self.fosters.orphan));
+            assert!(!has_edges(world, self.hosts.orphan));
             assert!(!has_edges(world, self.targets.orphan));
-            assert!(!is_participant::<Orphan>(world, self.fosters.orphan));
+            assert!(!is_participant::<Orphan>(world, self.hosts.orphan));
             assert!(!is_root::<Orphan>(world, self.targets.orphan));
 
             assert!(world.get_entity(self.targets.counted).is_none());
-            assert!(!has_edges(world, self.fosters.counted));
-            assert!(!is_participant::<Counted>(world, self.fosters.counted,));
+            assert!(!has_edges(world, self.hosts.counted));
+            assert!(!is_participant::<Counted>(world, self.hosts.counted,));
 
-            assert!(world.get_entity(self.fosters.recursive).is_none());
+            assert!(world.get_entity(self.hosts.recursive).is_none());
             assert!(!has_edges(world, self.targets.recursive));
             assert!(!is_root::<Recursive>(world, self.targets.recursive));
 
-            assert!(world.get_entity(self.fosters.total).is_none());
+            assert!(world.get_entity(self.hosts.total).is_none());
             assert!(world.get_entity(self.targets.total).is_none());
         }
     }
 
     #[test]
     fn orphan_in_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Orphan")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -940,11 +1028,9 @@ mod tests {
 
     #[test]
     fn orphan_out_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Orphan")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -961,11 +1047,9 @@ mod tests {
 
     #[test]
     fn counted_in_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Counted")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -981,11 +1065,9 @@ mod tests {
 
     #[test]
     fn counted_out_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Counted")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1002,11 +1084,9 @@ mod tests {
 
     #[test]
     fn recursive_in_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Recursive")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1023,11 +1103,9 @@ mod tests {
 
     #[test]
     fn recursive_out_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Recursive")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1043,11 +1121,9 @@ mod tests {
 
     #[test]
     fn total_in_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Total")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1063,11 +1139,9 @@ mod tests {
 
     #[test]
     fn total_out_despawned() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Total")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1083,11 +1157,9 @@ mod tests {
 
     #[test]
     fn orphan_in_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Orphan")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1104,11 +1176,9 @@ mod tests {
 
     #[test]
     fn orphan_out_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Orphan")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1125,11 +1195,9 @@ mod tests {
 
     #[test]
     fn counted_in_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Counted")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1145,11 +1213,9 @@ mod tests {
 
     #[test]
     fn counted_out_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Counted")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Counted;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1166,11 +1232,9 @@ mod tests {
 
     #[test]
     fn recursive_in_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Recursive")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1187,11 +1251,9 @@ mod tests {
 
     #[test]
     fn recursive_out_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Recursive")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Recursive;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1207,11 +1269,9 @@ mod tests {
 
     #[test]
     fn total_in_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Total")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
@@ -1227,11 +1287,9 @@ mod tests {
 
     #[test]
     fn total_out_unset() {
+        #[derive(Relation)]
+        #[cleanup(policy = "Total")]
         struct R;
-
-        impl Relation for R {
-            const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Total;
-        }
 
         let mut world = World::new();
         world.init_resource::<RefragmentHooks>();
