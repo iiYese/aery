@@ -393,6 +393,9 @@ pub enum ControlFlow {
     /// - For beadth first traversals this is the next entity in the walk path.
     /// - Otherwise it's a linear traversal through the query items and this is the next entity.
     Walk,
+    /// Immediately descend a traversal. Skips any remaining permutations and the remaining walk
+    /// path.
+    Plunge,
 }
 
 impl From<()> for ControlFlow {
@@ -467,7 +470,7 @@ where
                 {
                     ControlFlow::Continue => {}
                     ControlFlow::Exit => return,
-                    ControlFlow::Walk => break,
+                    ControlFlow::Walk | ControlFlow::Plunge => break,
                     ControlFlow::FastForward(n) if n < N => {
                         matches[n] = false;
                     }
@@ -514,7 +517,7 @@ where
                 {
                     ControlFlow::Continue => {}
                     ControlFlow::Exit => return,
-                    ControlFlow::Walk => break,
+                    ControlFlow::Walk | ControlFlow::Plunge => break,
                     ControlFlow::FastForward(n) if n < N => {
                         matches[n] = false;
                     }
@@ -550,7 +553,7 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some(entity) = queue.pop_front() {
+        'queue: while let Some(entity) = queue.pop_front() {
             let Ok((mut control, relations)) = self.control.get(entity) else {
                 continue
             };
@@ -560,8 +563,14 @@ where
                     continue
                 };
 
-                if let ControlFlow::Exit = func(&mut control, joined_queries.0).into() {
-                    return;
+                match func(&mut control, joined_queries.0).into() {
+                    ControlFlow::Exit => return,
+                    ControlFlow::Plunge => {
+                        queue.clear();
+                        queue.push_back(e);
+                        continue 'queue;
+                    }
+                    _ => {}
                 }
             }
 
@@ -602,7 +611,7 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some(entity) = queue.pop_front() {
+        'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
             let Ok((mut control, relations)) = (unsafe {
                 self.control.get_unchecked(entity)
@@ -616,8 +625,14 @@ where
                     continue
                 };
 
-                if let ControlFlow::Exit = func(&mut control, joined_queries.0).into() {
-                    return;
+                match func(&mut control, joined_queries.0).into() {
+                    ControlFlow::Exit => return,
+                    ControlFlow::Plunge => {
+                        queue.clear();
+                        queue.push_back(e);
+                        continue 'queue;
+                    }
+                    _ => {}
                 }
             }
 
@@ -687,13 +702,16 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some(entity) = queue.pop_front() {
-            let Ok((mut ancestor, ancestor_edges)) = self.control.get(entity) else {
+        'queue: while let Some(entity) = queue.pop_front() {
+            let Ok((mut ancestor_components, ancestor_edges)) = self.control.get(entity) else {
                 continue
             };
 
             for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
-                let Ok((mut descendant, descendant_edges)) = self.control.get(descendant) else {
+                let Ok((mut descendant_components, descendant_edges)) = self
+                    .control
+                    .get(descendant)
+                else {
                     continue
                 };
 
@@ -708,8 +726,8 @@ where
                     }
 
                     match func(
-                        &mut ancestor,
-                        &mut descendant,
+                        &mut ancestor_components,
+                        &mut descendant_components,
                         Joinable::join(&mut self.joined_queries, entities),
                     )
                     .into()
@@ -719,6 +737,11 @@ where
                         ControlFlow::Walk => break,
                         ControlFlow::FastForward(n) if n < N => {
                             matches[n] = false;
+                        }
+                        ControlFlow::Plunge => {
+                            queue.clear();
+                            queue.push_back(descendant);
+                            continue 'queue;
                         }
                         _ => {}
                     }
@@ -769,9 +792,9 @@ where
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
-        while let Some(entity) = queue.pop_front() {
+        'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((mut ancestor, ancestor_edges)) = (unsafe {
+            let Ok((mut ancestor_components, ancestor_edges)) = (unsafe {
                 self.control.get_unchecked(entity)
             }) else {
                 continue
@@ -779,7 +802,7 @@ where
 
             for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
                 // SAFETY: Self referential relations are impossible so this is always safe.
-                let Ok((mut descendant, descendant_edges)) = (unsafe {
+                let Ok((mut descendant_components, descendant_edges)) = (unsafe {
                     self.control.get_unchecked(descendant)
                 }) else {
                     continue
@@ -796,8 +819,8 @@ where
                     }
 
                     match func(
-                        &mut ancestor,
-                        &mut descendant,
+                        &mut ancestor_components,
+                        &mut descendant_components,
                         Joinable::join(&mut self.joined_queries, entities),
                     )
                     .into()
@@ -807,6 +830,11 @@ where
                         ControlFlow::Walk => break,
                         ControlFlow::FastForward(n) if n < N => {
                             matches[n] = false;
+                        }
+                        ControlFlow::Plunge => {
+                            queue.clear();
+                            queue.push_back(descendant);
+                            continue 'queue;
                         }
                         _ => {}
                     }
