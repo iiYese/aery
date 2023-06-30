@@ -393,9 +393,9 @@ pub enum ControlFlow {
     /// - For beadth first traversals this is the next entity in the walk path.
     /// - Otherwise it's a linear traversal through the query items and this is the next entity.
     Walk,
-    /// Immediately descend a traversal. Skips any remaining permutations and the remaining walk
+    /// Immediately probe a traversal. Skips any remaining permutations and the remaining walk
     /// path.
-    Plunge,
+    Probe,
 }
 
 impl From<()> for ControlFlow {
@@ -470,7 +470,7 @@ where
                 {
                     ControlFlow::Continue => {}
                     ControlFlow::Exit => return,
-                    ControlFlow::Walk | ControlFlow::Plunge => break,
+                    ControlFlow::Walk | ControlFlow::Probe => break,
                     ControlFlow::FastForward(n) if n < N => {
                         matches[n] = false;
                     }
@@ -517,7 +517,7 @@ where
                 {
                     ControlFlow::Continue => {}
                     ControlFlow::Exit => return,
-                    ControlFlow::Walk | ControlFlow::Plunge => break,
+                    ControlFlow::Walk | ControlFlow::Probe => break,
                     ControlFlow::FastForward(n) if n < N => {
                         matches[n] = false;
                     }
@@ -565,7 +565,7 @@ where
 
                 match func(&mut control, joined_queries.0).into() {
                     ControlFlow::Exit => return,
-                    ControlFlow::Plunge => {
+                    ControlFlow::Probe => {
                         queue.clear();
                         queue.push_back(e);
                         continue 'queue;
@@ -627,7 +627,7 @@ where
 
                 match func(&mut control, joined_queries.0).into() {
                     ControlFlow::Exit => return,
-                    ControlFlow::Plunge => {
+                    ControlFlow::Probe => {
                         queue.clear();
                         queue.push_back(e);
                         continue 'queue;
@@ -738,7 +738,7 @@ where
                         ControlFlow::FastForward(n) if n < N => {
                             matches[n] = false;
                         }
-                        ControlFlow::Plunge => {
+                        ControlFlow::Probe => {
                             queue.clear();
                             queue.push_back(descendant);
                             continue 'queue;
@@ -831,7 +831,7 @@ where
                         ControlFlow::FastForward(n) if n < N => {
                             matches[n] = false;
                         }
-                        ControlFlow::Plunge => {
+                        ControlFlow::Probe => {
                             queue.clear();
                             queue.push_back(descendant);
                             continue 'queue;
