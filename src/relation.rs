@@ -105,8 +105,18 @@ pub enum CleanupPolicy {
     Total,
 }
 
+pub trait ZstOrPanic: Sized {
+    const ZST_OR_PANIC: () = {
+        if std::mem::size_of::<Self>() != 0 {
+            panic!("Not a ZST")
+        }
+    };
+}
+
+impl<T> ZstOrPanic for T {}
+
 /// The relation trait. This is what controls the cleanup policy and exclusivity of a relation.
-pub trait Relation: 'static + Send + Sync {
+pub trait Relation: 'static + Sized + Send + Sync {
     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
     const EXCLUSIVE: bool = true;
 }
@@ -222,7 +232,10 @@ impl<R> Command for Set<R>
 where
     R: Relation,
 {
+    #[allow(clippy::let_unit_value)]
     fn write(self, world: &mut World) {
+        let _ = R::ZST_OR_PANIC;
+
         if self.host == self.target {
             warn!(
                 "Tried to set {} from {:?} to itself. \
@@ -331,7 +344,10 @@ where
 }
 
 impl<R: Relation> Command for Unset<R> {
+    #[allow(clippy::let_unit_value)]
     fn write(self, world: &mut World) {
+        let _ = R::ZST_OR_PANIC;
+
         Command::write(
             UnsetErased {
                 host: self.host,
@@ -441,6 +457,7 @@ where
 }
 
 impl<R: Relation> Command for UnsetAll<R> {
+    #[allow(clippy::let_unit_value)]
     fn write(self, world: &mut World) {
         while let Some(target) = world
             .get::<Edges>(self.entity)
@@ -448,6 +465,8 @@ impl<R: Relation> Command for UnsetAll<R> {
             .and_then(|targets| targets.first())
             .copied()
         {
+            let _ = R::ZST_OR_PANIC;
+
             Command::write(
                 Unset::<R> {
                     target,
@@ -470,6 +489,7 @@ where
 }
 
 impl<R: Relation> Command for Withdraw<R> {
+    #[allow(clippy::let_unit_value)]
     fn write(self, world: &mut World) {
         while let Some(host) = world
             .get::<Edges>(self.entity)
@@ -477,6 +497,8 @@ impl<R: Relation> Command for Withdraw<R> {
             .and_then(|targets| targets.first())
             .copied()
         {
+            let _ = R::ZST_OR_PANIC;
+
             Command::write(
                 Unset::<R> {
                     host,

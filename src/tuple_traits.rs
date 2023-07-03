@@ -47,7 +47,7 @@ macro_rules! count {
     ($_:tt $($tail:tt)*) => { 1  + count!($($tail)*) };
 }
 
-pub trait RelationSet: Sealed {
+pub trait RelationSet: Sized + Sealed {
     type Filters: ReadOnlyWorldQuery;
 }
 

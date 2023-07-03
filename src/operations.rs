@@ -1,5 +1,5 @@
 use crate::{
-    relation::{EdgeWQ, Relation},
+    relation::{EdgeWQ, Relation, ZstOrPanic},
     tuple_traits::*,
 };
 use bevy::ecs::{
@@ -102,7 +102,10 @@ where
     F: ReadOnlyWorldQuery,
     R: RelationSet + Send + Sync,
 {
+    #[allow(clippy::let_unit_value)]
     fn ops(&self) -> Operations<&Self> {
+        let _ = R::ZST_OR_PANIC;
+
         Operations {
             control: self,
             joined_types: PhantomData,
@@ -111,7 +114,10 @@ where
         }
     }
 
+    #[allow(clippy::let_unit_value)]
     fn ops_mut(&mut self) -> Operations<&mut Self> {
+        let _ = R::ZST_OR_PANIC;
+
         Operations {
             control: self,
             joined_types: PhantomData,
