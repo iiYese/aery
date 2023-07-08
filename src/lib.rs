@@ -59,17 +59,19 @@
 //! }
 //! ```
 
+pub mod composer;
 pub mod operations;
 pub mod relation;
 pub mod tuple_traits;
 
 pub mod prelude {
     pub use crate::{
+        composer::{Compose, Composer},
         operations::{
             AeryQueryExt, BreadthFirst, ControlFlow, ForEachPermutations,
             ForEachPermutations3Arity, Join, Relations,
         },
-        relation::{CheckedDespawn, CleanupPolicy, Participates, Relation, RelationCommands, Root},
+        relation::{CheckedDespawn, CleanupPolicy, Participates, Relation, Root},
         tuple_traits::{Joinable, RelationSet},
         Aery,
     };
