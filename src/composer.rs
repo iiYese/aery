@@ -146,7 +146,7 @@ impl Composer<&'_ mut World> {
     }
 }
 
-impl Composer<Commands<'_, '_>> {
+impl Composer<&'_ mut Commands<'_, '_>> {
     pub fn untarget<R: Relation>(&mut self, target: Entity) -> &'_ mut Self {
         self.world_api.add(Untarget::<R> {
             target,
