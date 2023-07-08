@@ -10,7 +10,7 @@ use bevy::ecs::{
 
 pub trait Compose {
     fn compose(&mut self, bundle: impl Bundle) -> Composer<&'_ mut Self>;
-    fn modify(&mut self, entity: Entity) -> Composer<&'_ mut Self>;
+    fn update(&mut self, entity: Entity) -> Composer<&'_ mut Self>;
 }
 
 impl Compose for World {
@@ -21,7 +21,7 @@ impl Compose for World {
         }
     }
 
-    fn modify(&mut self, entity: Entity) -> Composer<&'_ mut Self> {
+    fn update(&mut self, entity: Entity) -> Composer<&'_ mut Self> {
         Composer {
             entity,
             world_api: self,
@@ -42,7 +42,7 @@ impl Compose for Commands<'_, '_> {
         }
     }
 
-    fn modify(&mut self, entity: Entity) -> Composer<&'_ mut Self> {
+    fn update(&mut self, entity: Entity) -> Composer<&'_ mut Self> {
         Composer {
             entity,
             world_api: self,
@@ -275,12 +275,12 @@ mod tests {
         world.init_resource::<RefragmentHooks>();
         let [host, target] = from_fn(|_| world.spawn_empty().id());
 
-        world.modify(host).target::<R>(target);
+        world.update(host).target::<R>(target);
         assert!(targeting::<R>(&world, host, target));
         assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, target));
 
-        world.modify(host).untarget::<R>(target);
+        world.update(host).untarget::<R>(target);
         assert!(!has_edges(&world, target));
         assert!(!has_edges(&world, host));
         assert!(!is_participant::<R>(&world, host));
@@ -297,14 +297,14 @@ mod tests {
         let [host, t0, t1] = from_fn(|_| world.spawn_empty().id());
 
         // Before overwrite
-        world.modify(host).target::<R>(t0);
+        world.update(host).target::<R>(t0);
 
         assert!(targeting::<R>(&world, host, t0));
         assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, t0));
 
         // After overwrite
-        world.modify(host).target::<R>(t1);
+        world.update(host).target::<R>(t1);
 
         assert!(targeting::<R>(&world, host, t1));
         assert!(is_participant::<R>(&world, host));
@@ -364,29 +364,29 @@ mod tests {
             };
 
             world
-                .modify(test.hosts.orphan)
+                .update(test.hosts.orphan)
                 .target::<Orphan>(test.center);
             world
-                .modify(test.center)
+                .update(test.center)
                 .target::<Orphan>(test.targets.orphan);
 
             world
-                .modify(test.hosts.counted)
+                .update(test.hosts.counted)
                 .target::<Counted>(test.center);
             world
-                .modify(test.center)
+                .update(test.center)
                 .target::<Counted>(test.targets.counted);
 
             world
-                .modify(test.hosts.recursive)
+                .update(test.hosts.recursive)
                 .target::<Recursive>(test.center);
             world
-                .modify(test.center)
+                .update(test.center)
                 .target::<Recursive>(test.targets.recursive);
 
-            world.modify(test.hosts.total).target::<Total>(test.center);
+            world.update(test.hosts.total).target::<Total>(test.center);
             world
-                .modify(test.center)
+                .update(test.center)
                 .target::<Total>(test.targets.total);
 
             test
@@ -464,7 +464,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(e).target::<R>(test.center).checked_despawn();
+        world.update(e).target::<R>(test.center).checked_despawn();
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -482,9 +482,9 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e);
+        world.update(test.center).target::<R>(e);
 
-        world.modify(e).checked_despawn();
+        world.update(e).checked_despawn();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -501,7 +501,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(e).target::<R>(test.center).checked_despawn();
+        world.update(e).target::<R>(test.center).checked_despawn();
 
         test.assert_cleaned(&world);
     }
@@ -518,9 +518,9 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e);
+        world.update(test.center).target::<R>(e);
 
-        world.modify(e).checked_despawn();
+        world.update(e).checked_despawn();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -537,7 +537,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(e).target::<R>(test.center).checked_despawn();
+        world.update(e).target::<R>(test.center).checked_despawn();
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -555,9 +555,9 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e);
+        world.update(test.center).target::<R>(e);
 
-        world.modify(e).checked_despawn();
+        world.update(e).checked_despawn();
         test.assert_cleaned(&world);
     }
 
@@ -573,7 +573,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(e).target::<R>(test.center).checked_despawn();
+        world.update(e).target::<R>(test.center).checked_despawn();
 
         test.assert_cleaned(&world);
     }
@@ -590,9 +590,9 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e);
+        world.update(test.center).target::<R>(e);
 
-        world.modify(e).checked_despawn();
+        world.update(e).checked_despawn();
         test.assert_cleaned(&world);
     }
 
@@ -609,7 +609,7 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world
-            .modify(e)
+            .update(e)
             .target::<R>(test.center)
             .untarget::<R>(test.center);
 
@@ -629,7 +629,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e).untarget::<R>(e);
+        world.update(test.center).target::<R>(e).untarget::<R>(e);
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -648,7 +648,7 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world
-            .modify(e)
+            .update(e)
             .target::<R>(test.center)
             .untarget::<R>(test.center);
 
@@ -667,7 +667,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e).untarget::<R>(e);
+        world.update(test.center).target::<R>(e).untarget::<R>(e);
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -686,7 +686,7 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world
-            .modify(e)
+            .update(e)
             .target::<R>(test.center)
             .untarget::<R>(test.center);
 
@@ -706,7 +706,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e).untarget::<R>(e);
+        world.update(test.center).target::<R>(e).untarget::<R>(e);
 
         test.assert_cleaned(&world);
     }
@@ -724,7 +724,7 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world
-            .modify(e)
+            .update(e)
             .target::<R>(test.center)
             .untarget::<R>(test.center);
 
@@ -743,7 +743,7 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        world.modify(test.center).target::<R>(e).untarget::<R>(e);
+        world.update(test.center).target::<R>(e).untarget::<R>(e);
 
         test.assert_cleaned(&world);
     }

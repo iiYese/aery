@@ -999,7 +999,7 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .modify(left)
+                .update(left)
                 .target::<R0>(a1)
                 .target::<R1>(b0)
                 .target::<R1>(b2)
@@ -1077,7 +1077,7 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .modify(left)
+                .update(left)
                 .target::<R0>(a0)
                 .target::<R0>(a2)
                 .target::<R1>(b1)
@@ -1156,7 +1156,7 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .modify(left)
+                .update(left)
                 .target::<R0>(a0)
                 .target::<R0>(a1)
                 .target::<R0>(a2)
@@ -1232,7 +1232,7 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .modify(left)
+                .update(left)
                 .target::<R0>(a0)
                 .target::<R0>(a1)
                 .target::<R0>(a2)
