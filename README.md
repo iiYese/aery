@@ -8,11 +8,11 @@ ZST relations.
 ### Currently supported:
 - ZST relations
 - Fragmenting on (relation) type
+- Cleanup policies
 - Declarative APIs for:
   - Joining
   - Traversing
   - Spawning
-- Explicit despawn cleanup
 
 ```rust
 use bevy::prelude::*;

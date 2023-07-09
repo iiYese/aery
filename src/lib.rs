@@ -8,11 +8,11 @@
 //! ### Currently supported:
 //! - ZST relations
 //! - Fragmenting on (relation) type
+//! - Cleanup policies
 //! - Declarative APIs for:
 //!   - Joining
 //!   - Traversing
 //!   - Spawning
-//! - Explicit despawn cleanup
 //!
 //! # Basic:
 //! ```
@@ -80,7 +80,10 @@ pub mod prelude {
             AeryQueryExt, BreadthFirst, ControlFlow, ForEachPermutations,
             ForEachPermutations3Arity, Join, Relations,
         },
-        relation::{CheckedDespawn, CleanupPolicy, Participates, Relation, RelationCommands, Root},
+        relation::{
+            CheckedDespawn, CleanupPolicy, Participates, Relation, RelationCommands, Root,
+            ZstOrPanic,
+        },
         scope::{Scope, ScopeEntity},
         tuple_traits::{Joinable, RelationSet},
         Aery,

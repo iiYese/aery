@@ -14,4 +14,4 @@ readme = "README.md"
 [dependencies]
 bevy = "0.11"
 indexmap = "1.9.3"
-aery_macros = { path = "macros", version = "0.1.0-dev" }
+aery_macros = { path = "macros", version = "0.2.0-dev" }

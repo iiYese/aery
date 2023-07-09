@@ -699,8 +699,11 @@ pub trait RelationCommands: Sized {
 }
 
 #[rustfmt::skip]
+#[allow(clippy::let_unit_value)]
 impl RelationCommands for EntityMut<'_> {
     fn set<R: Relation>(&mut self, target: Entity) -> &'_ mut Self {
+        let _ = R::ZST_OR_PANIC;
+
         let id = self.id();
 
         self.world_scope(|world| Command::apply(
@@ -712,6 +715,8 @@ impl RelationCommands for EntityMut<'_> {
     }
 
     fn unset<R: Relation>(self, target: Entity) -> Option<Self> {
+        let _ = R::ZST_OR_PANIC;
+
         let id = self.id();
         let world = self.into_world_mut();
 
@@ -724,6 +729,8 @@ impl RelationCommands for EntityMut<'_> {
     }
 
     fn unset_all<R: Relation>(self) -> Option<Self> {
+        let _ = R::ZST_OR_PANIC;
+
         let id = self.id();
         let world = self.into_world_mut();
 
@@ -736,6 +743,8 @@ impl RelationCommands for EntityMut<'_> {
     }
 
     fn withdraw<R: Relation>(self) -> Option<Self> {
+        let _ = R::ZST_OR_PANIC;
+
         let id = self.id();
         let world = self.into_world_mut();
 

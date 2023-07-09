@@ -1,4 +1,4 @@
-use crate::relation::{Relation, RelationCommands};
+use crate::relation::{Relation, RelationCommands, ZstOrPanic};
 
 use bevy::{
     ecs::{entity::Entity, world::EntityMut},
@@ -16,6 +16,7 @@ pub trait ScopeEntity {
         entity: Entity,
         func: impl FnMut(EntityMut<'_>),
     ) -> &'_ mut Self;
+
     fn scope_target<R: Relation>(
         &mut self,
         entity: Entity,
@@ -23,8 +24,11 @@ pub trait ScopeEntity {
     ) -> &'_ mut Self;
 }
 
+#[allow(clippy::let_unit_value)]
 impl Scope for EntityMut<'_> {
     fn scope<R: Relation>(&mut self, mut func: impl FnMut(EntityMut<'_>)) -> &'_ mut Self {
+        let _ = R::ZST_OR_PANIC;
+
         let id = self.id();
 
         self.world_scope(|world| {
@@ -37,6 +41,8 @@ impl Scope for EntityMut<'_> {
     }
 
     fn scope_target<R: Relation>(&mut self, mut func: impl FnMut(EntityMut<'_>)) -> &'_ mut Self {
+        let _ = R::ZST_OR_PANIC;
+
         let mut id = Entity::PLACEHOLDER;
 
         self.world_scope(|world| {
@@ -51,12 +57,15 @@ impl Scope for EntityMut<'_> {
     }
 }
 
+#[allow(clippy::let_unit_value)]
 impl ScopeEntity for EntityMut<'_> {
     fn scope<R: Relation>(
         &mut self,
         entity: Entity,
         mut func: impl FnMut(EntityMut<'_>),
     ) -> &'_ mut Self {
+        let _ = R::ZST_OR_PANIC;
+
         let id = self.id();
 
         self.world_scope(|world| {
@@ -77,6 +86,8 @@ impl ScopeEntity for EntityMut<'_> {
         entity: Entity,
         mut func: impl FnMut(EntityMut<'_>),
     ) -> &'_ mut Self {
+        let _ = R::ZST_OR_PANIC;
+
         let mut exists = true;
 
         self.world_scope(|world| {

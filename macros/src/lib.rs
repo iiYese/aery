@@ -20,6 +20,8 @@ pub fn relation_derive(input: TokenStream) -> TokenStream {
             const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::#cleanup;
             const EXCLUSIVE: bool = #exclusive;
         }
+
+        const _: () = #ident::ZST_OR_PANIC;
     };
 
     output.into()
