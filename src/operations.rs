@@ -159,7 +159,7 @@ where
 ///         (e5, e2),
 ///         (e6, e2)
 ///     ] {
-///         commands.target::<R>(from, to);
+///         commands.set::<R>(from, to);
 ///     }
 ///
 ///     //  Will construct the following graph:
@@ -999,11 +999,11 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .update(left)
-                .target::<R0>(a1)
-                .target::<R1>(b0)
-                .target::<R1>(b2)
-                .target::<R2>(c1);
+                .entity_mut(left)
+                .set::<R0>(a1)
+                .set::<R1>(b0)
+                .set::<R1>(b2)
+                .set::<R2>(c1);
 
             world.insert_resource(EntityList { entities });
         }
@@ -1077,12 +1077,12 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .update(left)
-                .target::<R0>(a0)
-                .target::<R0>(a2)
-                .target::<R1>(b1)
-                .target::<R2>(c0)
-                .target::<R2>(c2);
+                .entity_mut(left)
+                .set::<R0>(a0)
+                .set::<R0>(a2)
+                .set::<R1>(b1)
+                .set::<R2>(c0)
+                .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
         }
@@ -1156,16 +1156,16 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .update(left)
-                .target::<R0>(a0)
-                .target::<R0>(a1)
-                .target::<R0>(a2)
-                .target::<R1>(b0)
-                .target::<R1>(b1)
-                .target::<R1>(b2)
-                .target::<R2>(c0)
-                .target::<R2>(c1)
-                .target::<R2>(c2);
+                .entity_mut(left)
+                .set::<R0>(a0)
+                .set::<R0>(a1)
+                .set::<R0>(a2)
+                .set::<R1>(b0)
+                .set::<R1>(b1)
+                .set::<R1>(b2)
+                .set::<R2>(c0)
+                .set::<R2>(c1)
+                .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
         }
@@ -1232,16 +1232,16 @@ mod tests {
             let left = world.spawn(S).id();
 
             world
-                .update(left)
-                .target::<R0>(a0)
-                .target::<R0>(a1)
-                .target::<R0>(a2)
-                .target::<R1>(b0)
-                .target::<R1>(b1)
-                .target::<R1>(b2)
-                .target::<R2>(c0)
-                .target::<R2>(c1)
-                .target::<R2>(c2);
+                .entity_mut(left)
+                .set::<R0>(a0)
+                .set::<R0>(a1)
+                .set::<R0>(a2)
+                .set::<R1>(b0)
+                .set::<R1>(b1)
+                .set::<R1>(b2)
+                .set::<R2>(c0)
+                .set::<R2>(c1)
+                .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
         }
