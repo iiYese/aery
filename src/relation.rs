@@ -3,7 +3,7 @@ use bevy::{
         component::Component,
         entity::Entity,
         query::{Or, With, WorldQuery},
-        system::{Command, Commands, Resource},
+        system::{Command, Resource},
         world::{EntityMut, World},
     },
     log::warn,
