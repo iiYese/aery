@@ -1050,8 +1050,8 @@ mod tests {
         }
 
         App::new()
-            .add_plugin(Aery)
-            .add_systems((init, run, test).chain())
+            .add_plugins(Aery)
+            .add_systems(Update, (init, run, test).chain())
             .run();
     }
 
@@ -1129,8 +1129,8 @@ mod tests {
         }
 
         App::new()
-            .add_plugin(Aery)
-            .add_systems((init, run, test).chain())
+            .add_plugins(Aery)
+            .add_systems(Update, (init, run, test).chain())
             .run();
     }
 
@@ -1205,8 +1205,8 @@ mod tests {
         }
 
         App::new()
-            .add_plugin(Aery)
-            .add_systems((init, run, test).chain())
+            .add_plugins(Aery)
+            .add_systems(Update, (init, run, test).chain())
             .run();
     }
 
@@ -1282,8 +1282,8 @@ mod tests {
         }
 
         App::new()
-            .add_plugin(Aery)
-            .add_systems((init, run, test).chain())
+            .add_plugins(Aery)
+            .add_systems(Update, (init, run, test).chain())
             .run();
     }
 }

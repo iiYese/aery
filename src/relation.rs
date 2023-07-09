@@ -235,7 +235,7 @@ where
     R: Relation,
 {
     #[allow(clippy::let_unit_value)]
-    fn write(self, world: &mut World) {
+    fn apply(self, world: &mut World) {
         let _ = R::ZST_OR_PANIC;
 
         if self.host == self.target {
@@ -321,7 +321,7 @@ where
         ));
 
         if let Some(old) = old.filter(|old| R::EXCLUSIVE && self.target != *old) {
-            Command::write(
+            Command::apply(
                 Unset::<R> {
                     host: self.host,
                     target: old,
@@ -347,10 +347,10 @@ where
 
 impl<R: Relation> Command for Unset<R> {
     #[allow(clippy::let_unit_value)]
-    fn write(self, world: &mut World) {
+    fn apply(self, world: &mut World) {
         let _ = R::ZST_OR_PANIC;
 
-        Command::write(
+        Command::apply(
             UnsetErased {
                 host: self.host,
                 target: self.target,
@@ -370,7 +370,7 @@ struct UnsetErased {
 }
 
 impl Command for UnsetErased {
-    fn write(self, world: &mut World) {
+    fn apply(self, world: &mut World) {
         let Some(refragment) = world
             .resource::<RefragmentHooks>()
             .hooks
@@ -415,7 +415,7 @@ impl Command for UnsetErased {
         world.entity_mut(self.target).insert(target_edges);
 
         if target_orphaned && matches!(self.policy, CleanupPolicy::Counted | CleanupPolicy::Total) {
-            Command::write(
+            Command::apply(
                 CheckedDespawn {
                     entity: self.target,
                 },
@@ -439,7 +439,7 @@ where
 
 impl<R: Relation> Command for UnsetAll<R> {
     #[allow(clippy::let_unit_value)]
-    fn write(self, world: &mut World) {
+    fn apply(self, world: &mut World) {
         while let Some(target) = world
             .get::<Edges>(self.entity)
             .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
@@ -448,7 +448,7 @@ impl<R: Relation> Command for UnsetAll<R> {
         {
             let _ = R::ZST_OR_PANIC;
 
-            Command::write(
+            Command::apply(
                 Unset::<R> {
                     target,
                     host: self.entity,
@@ -471,7 +471,7 @@ where
 
 impl<R: Relation> Command for Withdraw<R> {
     #[allow(clippy::let_unit_value)]
-    fn write(self, world: &mut World) {
+    fn apply(self, world: &mut World) {
         while let Some(host) = world
             .get::<Edges>(self.entity)
             .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
@@ -480,7 +480,7 @@ impl<R: Relation> Command for Withdraw<R> {
         {
             let _ = R::ZST_OR_PANIC;
 
-            Command::write(
+            Command::apply(
                 Unset::<R> {
                     host,
                     target: self.entity,
@@ -499,7 +499,7 @@ pub struct CheckedDespawn {
 }
 
 impl Command for CheckedDespawn {
-    fn write(self, world: &mut World) {
+    fn apply(self, world: &mut World) {
         let mut to_refrag = HashMap::<TypeId, HashSet<Entity>>::new();
         let mut to_despawn = HashSet::<Entity>::from([self.entity]);
         let mut queue = VecDeque::from([self.entity]);
@@ -703,7 +703,7 @@ impl RelationCommands for EntityMut<'_> {
     fn set<R: Relation>(&mut self, target: Entity) -> &'_ mut Self {
         let id = self.id();
 
-        self.world_scope(|world| Command::write(
+        self.world_scope(|world| Command::apply(
             Set::<R> { host: id, target, _phantom: PhantomData },
             world,
         ));
@@ -715,7 +715,7 @@ impl RelationCommands for EntityMut<'_> {
         let id = self.id();
         let world = self.into_world_mut();
 
-        Command::write(
+        Command::apply(
             Unset::<R> { host: id, target, _phantom: PhantomData },
             world,
         );
@@ -727,7 +727,7 @@ impl RelationCommands for EntityMut<'_> {
         let id = self.id();
         let world = self.into_world_mut();
 
-        Command::write(
+        Command::apply(
             UnsetAll::<R> { entity: id, _phantom: PhantomData },
             world,
         );
@@ -739,7 +739,7 @@ impl RelationCommands for EntityMut<'_> {
         let id = self.id();
         let world = self.into_world_mut();
 
-        Command::write(
+        Command::apply(
             Withdraw::<R> { entity: id, _phantom: PhantomData },
             world,
         );
@@ -750,7 +750,7 @@ impl RelationCommands for EntityMut<'_> {
     fn checked_despawn(self) {
         let id = self.id();
         let world = self.into_world_mut();
-        Command::write(CheckedDespawn { entity: id }, world);
+        Command::apply(CheckedDespawn { entity: id }, world);
     }
 }
 

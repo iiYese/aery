@@ -152,22 +152,7 @@ where
     }
 }
 
-impl<'a, P0> Joinable<'a, 1> for (P0,)
-where
-    P0: Sealed + Joinable<'a, 1>,
-{
-    type Out = <P0 as Joinable<'a, 1>>::Out;
-
-    fn check((p0,): &Self, [e0]: [Entity; 1]) -> [bool; 1] {
-        Joinable::check(p0, [e0])
-    }
-
-    fn join((p0,): &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
-        Joinable::join(p0, [e0])
-    }
-}
-
-/*macro_rules! impl_joinable {
+macro_rules! impl_joinable {
     ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
         impl<'a, $($P),*> Joinable<'a, { count!($($P )*) }> for ($($P,)*)
         where
@@ -193,42 +178,6 @@ where
             {
                 $(let $v = Joinable::join($p, [$e]); )*
                 ($($v,)*)
-            }
-        }
-    }
-}
-
-all_tuples!(impl_joinable, 2, 15, P, p, e, v);*/
-
-macro_rules! impl_joinable {
-    ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
-        impl<'a, P0, $($P),*> Joinable<'a, { 1 + count!($($P )*) }> for (P0, $($P,)*)
-        where
-            P0: Sealed + Joinable<'a, 1>,
-            $($P: Sealed + Joinable<'a, 1>,)*
-        {
-            type Out = (<P0 as Joinable<'a, 1>>::Out, $(<$P as Joinable<'a, 1>>::Out,)*);
-
-            fn check(
-                (p0, $($p,)*): &Self,
-                [e0, $($e,)*]: [Entity; 1 + count!($($P )*)]
-            )
-                -> [bool; 1 + count!($($p )*)]
-            {
-                let [v0] = Joinable::check(p0, [e0]);
-                $(let [$v] = Joinable::check($p, [$e]); )*
-                [v0, $($v,)*]
-            }
-
-            fn join(
-                (p0, $($p,)*): &'a mut Self,
-                [e0, $($e,)*]: [Entity; 1 + count!($($P )*)]
-            )
-                -> Self::Out
-            {
-                let v0 = Joinable::join(p0, [e0]);
-                $(let $v = Joinable::join($p, [$e]); )*
-                (v0, $($v,)*)
             }
         }
     }
