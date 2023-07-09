@@ -1,8 +1,18 @@
 ## Aery
-Non-fragmenting (slight misnomer) ZST relations for Bevy.
+A plugin that adds a subset of Entity Relationship features to Bevy using Non-fragmenting
+ZST relations.
 
 [![Crates.io](https://img.shields.io/crates/v/aery)](https://crates.io/crates/aery)
 [![Docs.rs](https://img.shields.io/docsrs/aery)](https://docs.rs/aery/latest/aery/)
+
+### Currently supported:
+- ZST relations
+- Fragmenting on (relation) type
+- Declarative APIs for:
+  - Joining
+  - Traversing
+  - Spawning
+- Explicit despawn cleanup
 
 ```rust
 use bevy::prelude::*;
@@ -10,9 +20,9 @@ use aery::prelude::*;
 
 fn main() {
     App::new()
-        .add_plugin(Aery)
-        .add_startup_system(setup)
-        .add_system(sys)
+        .add_plugins(Aery)
+        .add_systems(Startup, setup)
+        .add_systems(Update, sys)
         .run();
 }
 
@@ -23,53 +33,48 @@ struct Foo;
 struct Bar;
 
 #[derive(Relation)]
-struct R0;
+#[cleanup(policy = "Recursive")]
+struct Child;
 
 #[derive(Relation)]
-#[cleanup(policy = "Recursive")]
-struct R1;
+struct Bag;
 
 fn setup(mut commands: Commands) {
-    let (root, foo0, foo1, bar0, bar1) = (
-        commands.spawn(Foo).id(),
-        commands.spawn(Foo).id(),
-        commands.spawn(Foo).id(),
-        commands.spawn(Bar).id(),
-        commands.spawn(Bar).id(),
-    );
-
-    commands.set::<R0>(foo0, bar0);
-    commands.set::<R0>(foo1, bar1);
-    commands.set::<R1>(foo0, root);
-    commands.set::<R1>(foo1, root);
+    // A hierarchy of Foos with (chocolate? OwO) Bars in their Bags
+    commands.add(|world: &mut World| world
+        .spawn(Foo)
+        .scope::<Child>(|child| child
+            .insert(Foo)
+            .scope_target::<Bag>(|bag| bag.insert(Bar))
+        )
+        .scope::<Child>(|child| child
+            .insert(Foo)
+            .scope_target::<Bag>(|bag| bag.insert(Bar))
+        )
+    )
 }
 
 fn sys(
-    foos: Query<(&Foo, Relations<(R0, R1)>)>,
+    foos: Query<(&Foo, Relations<(Bag, Child)>)>,
     bars: Query<&Bar>,
-    r1_roots: Query<Entity, Root<R1>>
+    r1_roots: Query<Entity, Root<Child>>
 ) {
     foos.ops()
-        .join::<R0>(&bars)
-        .breadth_first::<R1>(r1_roots.iter())
-        .for_each(|foo_ancestor, foo, bar| {
+        .join::<Bag>(&bars)
+        .breadth_first::<Child>(r1_roots.iter())
+        .for_each(|foo_parent, foo, bar| {
             // ..
         })
 }
 ```
 
-### What is supported:
-- ZST relations
-- Fragmenting on (relation) type
-- Declarative joining & traversing
-- Explicit despawn cleanup
-
-### What is not supported:
-- Fragmenting on target
-- Target querying
-- Implicit despawn cleanup
-
 ### Version table
 | Bevy version | Aery verison |
 |--------------|--------------|
+| 0.11         | 0.3          |
 | 0.10         | 0.1 - 0.2    |
+
+### Credits
+- [Sander Mertens](https://github.com/SanderMertens):
+Responsible for pioneering Entity Relationships in ECS and the author of Flecs which Aery has taken 
+a lot of inspiration from.
