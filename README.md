@@ -57,11 +57,11 @@ fn setup(mut commands: Commands) {
 fn sys(
     foos: Query<(&Foo, Relations<(Bag, Child)>)>,
     bars: Query<&Bar>,
-    r1_roots: Query<Entity, Root<Child>>
+    roots: Query<Entity, Root<Child>>
 ) {
     foos.ops()
         .join::<Bag>(&bars)
-        .breadth_first::<Child>(r1_roots.iter())
+        .breadth_first::<Child>(roots.iter())
         .for_each(|foo_parent, foo, bar| {
             // ..
         })
