@@ -857,7 +857,7 @@ where
 #[allow(dead_code)]
 #[allow(unused_variables)]
 mod compile_tests {
-    use crate::prelude::*;
+    use crate::{self as aery, prelude::*};
     use bevy::prelude::*;
 
     #[derive(Component)]
@@ -945,7 +945,7 @@ mod compile_tests {
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::*;
+    use crate::{self as aery, prelude::*};
     use bevy::{app::AppExit, prelude::*};
 
     #[derive(Component)]
@@ -1001,8 +1001,11 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a1)
+                .unwrap()
                 .set::<R1>(b0)
+                .unwrap()
                 .set::<R1>(b2)
+                .unwrap()
                 .set::<R2>(c1);
 
             world.insert_resource(EntityList { entities });
@@ -1079,9 +1082,13 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a0)
+                .unwrap()
                 .set::<R0>(a2)
+                .unwrap()
                 .set::<R1>(b1)
+                .unwrap()
                 .set::<R2>(c0)
+                .unwrap()
                 .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
@@ -1158,13 +1165,21 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a0)
+                .unwrap()
                 .set::<R0>(a1)
+                .unwrap()
                 .set::<R0>(a2)
+                .unwrap()
                 .set::<R1>(b0)
+                .unwrap()
                 .set::<R1>(b1)
+                .unwrap()
                 .set::<R1>(b2)
+                .unwrap()
                 .set::<R2>(c0)
+                .unwrap()
                 .set::<R2>(c1)
+                .unwrap()
                 .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
@@ -1234,13 +1249,21 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a0)
+                .unwrap()
                 .set::<R0>(a1)
+                .unwrap()
                 .set::<R0>(a2)
+                .unwrap()
                 .set::<R1>(b0)
+                .unwrap()
                 .set::<R1>(b1)
+                .unwrap()
                 .set::<R1>(b2)
+                .unwrap()
                 .set::<R2>(c0)
+                .unwrap()
                 .set::<R2>(c1)
+                .unwrap()
                 .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });

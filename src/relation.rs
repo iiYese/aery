@@ -690,28 +690,29 @@ impl Command for CheckedDespawn {
     }
 }
 
-pub trait RelationCommands: Sized {
-    fn set<R: Relation>(&mut self, target: Entity) -> &'_ mut Self;
-    fn unset<R: Relation>(self, target: Entity) -> Option<Self>;
-    fn unset_all<R: Relation>(self) -> Option<Self>;
-    fn withdraw<R: Relation>(self) -> Option<Self>;
+pub trait RelationCommands<'a>: Sized {
+    fn set<R: Relation>(self, target: Entity) -> Option<EntityMut<'a>>;
+    fn unset<R: Relation>(self, target: Entity) -> Option<EntityMut<'a>>;
+    fn unset_all<R: Relation>(self) -> Option<EntityMut<'a>>;
+    fn withdraw<R: Relation>(self) -> Option<EntityMut<'a>>;
     fn checked_despawn(self);
 }
 
 #[rustfmt::skip]
 #[allow(clippy::let_unit_value)]
-impl RelationCommands for EntityMut<'_> {
-    fn set<R: Relation>(&mut self, target: Entity) -> &'_ mut Self {
+impl<'a> RelationCommands<'a> for EntityMut<'a> {
+    fn set<R: Relation>(self, target: Entity) -> Option<Self> {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
+        let world = self.into_world_mut();
 
-        self.world_scope(|world| Command::apply(
+        Command::apply(
             Set::<R> { host: id, target, _phantom: PhantomData },
             world,
-        ));
+        );
 
-        self
+        world.get_entity_mut(id)
     }
 
     fn unset<R: Relation>(self, target: Entity) -> Option<Self> {
@@ -766,6 +767,7 @@ impl RelationCommands for EntityMut<'_> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        self as aery,
         prelude::*,
         relation::{Edges, Participant, RefragmentHooks, RootMarker},
     };
@@ -1002,10 +1004,12 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .checked_despawn();
 
-        e.checked_despawn();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1040,10 +1044,12 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .checked_despawn();
 
-        e.checked_despawn();
         test.assert_cleaned(&world);
     }
 
@@ -1077,10 +1083,12 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .checked_despawn();
 
-        e.checked_despawn();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1114,10 +1122,12 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .checked_despawn();
 
-        e.checked_despawn();
         test.assert_cleaned(&world);
     }
 
@@ -1150,9 +1160,11 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
-        e.unset::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .unset::<R>(test.center);
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -1170,9 +1182,12 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        let mut c = world.entity_mut(test.center);
-        c.set::<R>(e);
-        c.unset::<R>(e);
+
+        world
+            .entity_mut(test.center)
+            .set::<R>(e)
+            .unwrap()
+            .unset::<R>(e);
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -1189,9 +1204,11 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
-        e.unset::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .unset::<R>(test.center);
 
         test.assert_cleaned(&world);
     }
@@ -1208,9 +1225,12 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        let mut c = world.entity_mut(test.center);
-        c.set::<R>(e);
-        c.unset::<R>(e);
+
+        world
+            .entity_mut(test.center)
+            .set::<R>(e)
+            .unwrap()
+            .unset::<R>(e);
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -1227,9 +1247,11 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
-        e.unset::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .unset::<R>(test.center);
 
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
@@ -1248,9 +1270,12 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        let mut c = world.entity_mut(test.center);
-        c.set::<R>(e);
-        c.unset::<R>(e);
+
+        world
+            .entity_mut(test.center)
+            .set::<R>(e)
+            .unwrap()
+            .unset::<R>(e);
 
         test.assert_cleaned(&world);
     }
@@ -1266,9 +1291,11 @@ mod tests {
 
         let test = Test::new(&mut world);
 
-        let mut e = world.spawn_empty();
-        e.set::<R>(test.center);
-        e.unset::<R>(test.center);
+        world
+            .spawn_empty()
+            .set::<R>(test.center)
+            .unwrap()
+            .unset::<R>(test.center);
 
         test.assert_cleaned(&world);
     }
@@ -1286,9 +1313,12 @@ mod tests {
         let test = Test::new(&mut world);
 
         let e = world.spawn_empty().id();
-        let mut c = world.entity_mut(test.center);
-        c.set::<R>(e);
-        c.unset::<R>(e);
+
+        world
+            .entity_mut(test.center)
+            .set::<R>(e)
+            .unwrap()
+            .unset::<R>(e);
 
         test.assert_cleaned(&world);
     }

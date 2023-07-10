@@ -42,17 +42,17 @@
 //!
 //! fn setup(mut commands: Commands) {
 //!     // A hierarchy of Foos with (chocolate? OwO) Bars in their Bags
-//!     commands.add(|world: &mut World| world
-//!         .spawn(Foo)
-//!         .scope::<Child>(|child| child
-//!             .insert(Foo)
-//!             .scope_target::<Bag>(|bag| bag.insert(Bar))
-//!         )
-//!         .scope::<Child>(|child| child
-//!             .insert(Foo)
-//!             .scope_target::<Bag>(|bag| bag.insert(Bar))
-//!         )
-//!     )
+//!     commands.add(|wrld: &mut World| {
+//!         wrld.spawn(Foo)
+//!             .scope_down::<Child>(|mut child| {
+//!                 child.insert(Foo);
+//!                 child.scope::<Bag>(|mut bag| { bag.insert(Bar); });
+//!             })
+//!             .scope_down::<Child>(|mut child| {
+//!                 child.insert(Foo);
+//!                 child.scope::<Bag>(|mut bag| { bag.insert(Bar); });
+//!             });
+//!     })
 //! }
 //!
 //! fn sys(
@@ -84,7 +84,7 @@ pub mod prelude {
             CheckedDespawn, CleanupPolicy, Participates, Relation, RelationCommands, Root,
             ZstOrPanic,
         },
-        scope::{Scope, ScopeEntity},
+        scope::Scope,
         tuple_traits::{Joinable, RelationSet},
         Aery,
     };

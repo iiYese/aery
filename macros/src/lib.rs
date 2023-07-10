@@ -21,7 +21,7 @@ pub fn relation_derive(input: TokenStream) -> TokenStream {
             const EXCLUSIVE: bool = #exclusive;
         }
 
-        const _: () = #ident::ZST_OR_PANIC;
+        const _: () = <#ident as aery::relation::ZstOrPanic>::ZST_OR_PANIC;
     };
 
     output.into()
