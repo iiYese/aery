@@ -1,4 +1,7 @@
-use crate::relation::{Relation, RelationCommands, Set, ZstOrPanic};
+use crate::{
+    commands::{RelationCommands, Set},
+    relation::{Relation, ZstOrPanic},
+};
 
 use bevy::{
     ecs::{entity::Entity, system::Command, world::EntityMut},

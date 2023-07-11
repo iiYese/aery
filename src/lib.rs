@@ -70,6 +70,8 @@
 //! }
 //! ```
 
+pub mod commands;
+pub mod events;
 pub mod operations;
 pub mod relation;
 pub mod scope;
@@ -77,14 +79,12 @@ pub mod tuple_traits;
 
 pub mod prelude {
     pub use crate::{
+        commands::RelationCommands,
         operations::{
             AeryQueryExt, BreadthFirst, ControlFlow, ForEachPermutations,
             ForEachPermutations3Arity, Join, Relations,
         },
-        relation::{
-            CheckedDespawn, CleanupPolicy, Participates, Relation, RelationCommands, Root,
-            ZstOrPanic,
-        },
+        relation::{CleanupPolicy, Participates, Relation, Root, ZstOrPanic},
         scope::Scope,
         tuple_traits::{Joinable, RelationSet},
         Aery,
@@ -93,7 +93,7 @@ pub mod prelude {
 }
 
 use bevy::app::{App, Plugin};
-use relation::RefragmentHooks;
+use commands::RefragmentHooks;
 
 pub struct Aery;
 
