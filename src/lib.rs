@@ -38,6 +38,7 @@
 //! struct Child;
 //!
 //! #[derive(Relation)]
+//! #[multi]
 //! struct Bag;
 //!
 //! fn setup(mut commands: Commands) {
@@ -57,8 +58,8 @@
 //!
 //! fn sys(
 //!     foos: Query<(&Foo, Relations<(Bag, Child)>)>,
-//!     bars: Query<&Bar>,
 //!     roots: Query<Entity, Root<Child>>
+//!     bars: Query<&Bar>,
 //! ) {
 //!     foos.ops()
 //!         .join::<Bag>(&bars)

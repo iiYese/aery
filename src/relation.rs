@@ -121,6 +121,7 @@ impl<T> ZstOrPanic for T {}
 pub trait Relation: 'static + Sized + Send + Sync {
     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
     const EXCLUSIVE: bool = true;
+    const SYMMETRIC: bool = false;
 }
 
 #[derive(Component, Default, Debug)]
@@ -288,6 +289,12 @@ where
             .or_default()
             .insert(self.host);
 
+        let symmetric_set = R::SYMMETRIC
+            && !target_edges.targets[R::CLEANUP_POLICY as usize]
+                .entry(TypeId::of::<R>())
+                .or_default()
+                .contains(&self.host);
+
         if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&TypeId::of::<R>()) {
             world.entity_mut(self.target).insert(RootMarker::<R> {
                 _phantom: PhantomData,
@@ -320,12 +327,24 @@ where
             },
         ));
 
+        if symmetric_set {
+            Command::apply(
+                Set::<R> {
+                    host: self.target,
+                    target: self.host,
+                    _phantom: PhantomData,
+                },
+                world,
+            );
+        }
+
         if let Some(old) = old.filter(|old| R::EXCLUSIVE && self.target != *old) {
             Command::apply(
-                Unset::<R> {
+                UnsetErased {
                     host: self.host,
                     target: old,
-                    _phantom: PhantomData,
+                    typeid: TypeId::of::<R>(),
+                    policy: R::CLEANUP_POLICY,
                 },
                 world,
             );
@@ -359,9 +378,22 @@ impl<R: Relation> Command for Unset<R> {
             },
             world,
         );
+
+        if R::SYMMETRIC {
+            Command::apply(
+                UnsetErased {
+                    host: self.target,
+                    target: self.host,
+                    typeid: TypeId::of::<R>(),
+                    policy: R::CLEANUP_POLICY,
+                },
+                world,
+            );
+        }
     }
 }
 
+// IGNORES SYMMETRIC PROPERTY
 struct UnsetErased {
     host: Entity,
     target: Entity,
@@ -761,6 +793,39 @@ impl<'a> RelationCommands<'a> for EntityMut<'a> {
         let id = self.id();
         let world = self.into_world_mut();
         Command::apply(CheckedDespawn { entity: id }, world);
+    }
+}
+
+impl<'a> RelationCommands<'a> for Option<EntityMut<'a>> {
+    fn set<R: Relation>(self, target: Entity) -> Self {
+        match self {
+            Some(entity_mut) => entity_mut.set::<R>(target),
+            None => {
+                warn!("Tried to set relation on an entity that doesn't exist. Ignoring.",);
+                None
+            }
+        }
+    }
+
+    // Unsetting an entity that doesn't exist is not considered an error
+    fn unset<R: Relation>(self, target: Entity) -> Self {
+        self.and_then(|entity_mut| entity_mut.unset::<R>(target))
+    }
+
+    // Unsetting an entity that doesn't exist is not considered an error
+    fn unset_all<R: Relation>(self) -> Self {
+        self.and_then(|entity_mut| entity_mut.unset_all::<R>())
+    }
+
+    // Unsetting an entity that doesn't exist is not considered an error
+    fn withdraw<R: Relation>(self) -> Self {
+        self.and_then(|entity_mut| entity_mut.withdraw::<R>())
+    }
+
+    fn checked_despawn(self) {
+        if let Some(entity_mut) = self {
+            entity_mut.checked_despawn()
+        }
     }
 }
 

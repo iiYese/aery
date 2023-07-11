@@ -3,12 +3,16 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Ident, LitStr, Result};
 
-#[proc_macro_derive(Relation, attributes(multi, cleanup))]
+#[proc_macro_derive(Relation, attributes(multi, symmetric, cleanup))]
 pub fn relation_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     let ident = &ast.ident;
     let exclusive = !ast.attrs.iter().any(|attr| attr.path().is_ident("multi"));
+    let symmetric = ast
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("symmetric"));
 
     let cleanup = match parse_cleanup_attr(&ast) {
         Ok(cleanup) => cleanup,
@@ -19,6 +23,7 @@ pub fn relation_derive(input: TokenStream) -> TokenStream {
         impl Relation for #ident {
             const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::#cleanup;
             const EXCLUSIVE: bool = #exclusive;
+            const SYMMETRIC: bool = #symmetric;
         }
 
         const _: () = <#ident as aery::relation::ZstOrPanic>::ZST_OR_PANIC;
