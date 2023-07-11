@@ -340,11 +340,10 @@ where
 
         if let Some(old) = old.filter(|old| R::EXCLUSIVE && self.target != *old) {
             Command::apply(
-                UnsetErased {
+                UnsetAsymmetric::<R> {
                     host: self.host,
                     target: old,
-                    typeid: TypeId::of::<R>(),
-                    policy: R::CLEANUP_POLICY,
+                    _phantom: PhantomData,
                 },
                 world,
             );
@@ -370,22 +369,20 @@ impl<R: Relation> Command for Unset<R> {
         let _ = R::ZST_OR_PANIC;
 
         Command::apply(
-            UnsetErased {
+            UnsetAsymmetric::<R> {
                 host: self.host,
                 target: self.target,
-                typeid: TypeId::of::<R>(),
-                policy: R::CLEANUP_POLICY,
+                _phantom: PhantomData,
             },
             world,
         );
 
         if R::SYMMETRIC {
             Command::apply(
-                UnsetErased {
+                UnsetAsymmetric::<R> {
                     host: self.target,
                     target: self.host,
-                    typeid: TypeId::of::<R>(),
-                    policy: R::CLEANUP_POLICY,
+                    _phantom: PhantomData,
                 },
                 world,
             );
@@ -393,20 +390,18 @@ impl<R: Relation> Command for Unset<R> {
     }
 }
 
-// IGNORES SYMMETRIC PROPERTY
-struct UnsetErased {
+struct UnsetAsymmetric<R: Relation> {
     host: Entity,
     target: Entity,
-    typeid: TypeId,
-    policy: CleanupPolicy,
+    _phantom: PhantomData<R>,
 }
 
-impl Command for UnsetErased {
+impl<R: Relation> Command for UnsetAsymmetric<R> {
     fn apply(self, world: &mut World) {
         let Some(refragment) = world
             .resource::<RefragmentHooks>()
             .hooks
-            .get(&self.typeid)
+            .get(&TypeId::of::<R>())
             .copied()
         else {
             return
@@ -427,26 +422,31 @@ impl Command for UnsetErased {
             return
         };
 
-        host_edges.targets[self.policy as usize]
-            .entry(self.typeid)
+        host_edges.targets[R::CLEANUP_POLICY as usize]
+            .entry(TypeId::of::<R>())
             .and_modify(|hosts| {
                 hosts.remove(&self.target);
             });
 
-        target_edges.hosts[self.policy as usize]
-            .entry(self.typeid)
+        target_edges.hosts[R::CLEANUP_POLICY as usize]
+            .entry(TypeId::of::<R>())
             .and_modify(|hosts| {
                 hosts.remove(&self.host);
             });
 
-        let target_orphaned = target_edges.hosts[self.policy as usize]
-            .get(&self.typeid)
+        let target_orphaned = target_edges.hosts[R::CLEANUP_POLICY as usize]
+            .get(&TypeId::of::<R>())
             .map_or(false, IndexSet::is_empty);
 
         world.entity_mut(self.host).insert(host_edges);
         world.entity_mut(self.target).insert(target_edges);
 
-        if target_orphaned && matches!(self.policy, CleanupPolicy::Counted | CleanupPolicy::Total) {
+        if target_orphaned
+            && matches!(
+                R::CLEANUP_POLICY,
+                CleanupPolicy::Counted | CleanupPolicy::Total
+            )
+        {
             Command::apply(
                 CheckedDespawn {
                     entity: self.target,
