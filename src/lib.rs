@@ -80,6 +80,7 @@ pub mod tuple_traits;
 pub mod prelude {
     pub use crate::{
         commands::RelationCommands,
+        events::{TargetEvent, TargetOp, Var},
         operations::{
             AeryQueryExt, BreadthFirst, ControlFlow, ForEachPermutations,
             ForEachPermutations3Arity, Join, Relations,
@@ -94,11 +95,14 @@ pub mod prelude {
 
 use bevy::app::{App, Plugin};
 use commands::RefragmentHooks;
+use events::{CleanupEvent, TargetEvent};
 
 pub struct Aery;
 
 impl Plugin for Aery {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RefragmentHooks>();
+        app.init_resource::<RefragmentHooks>()
+            .add_event::<TargetEvent>()
+            .add_event::<CleanupEvent>();
     }
 }

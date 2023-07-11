@@ -11,6 +11,15 @@ use core::any::TypeId;
 use indexmap::IndexSet;
 use std::marker::PhantomData;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RelationId(TypeId);
+
+impl RelationId {
+    pub fn of<R: Relation>() -> Self {
+        Self(TypeId::of::<R>())
+    }
+}
+
 #[derive(Component)]
 pub(crate) struct RootMarker<R: Relation> {
     pub _phantom: PhantomData<R>,
@@ -123,8 +132,8 @@ pub trait Relation: 'static + Sized + Send + Sync {
 
 #[derive(Component, Default, Debug)]
 pub(crate) struct Edges {
-    pub hosts: [HashMap<TypeId, IndexSet<Entity>>; 4],
-    pub targets: [HashMap<TypeId, IndexSet<Entity>>; 4],
+    pub hosts: [HashMap<RelationId, IndexSet<Entity>>; 4],
+    pub targets: [HashMap<RelationId, IndexSet<Entity>>; 4],
 }
 
 #[derive(WorldQuery)]
@@ -139,7 +148,7 @@ type EdgeIter<'a> = std::iter::Flatten<
 impl Edges {
     pub(crate) fn iter_hosts<R: Relation>(&self) -> EdgeIter<'_> {
         self.hosts[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .map(|targets| targets.iter().copied())
             .into_iter()
             .flatten()
@@ -147,7 +156,7 @@ impl Edges {
 
     pub(crate) fn iter_targets<R: Relation>(&self) -> EdgeIter<'_> {
         self.targets[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .map(|targets| targets.iter().copied())
             .into_iter()
             .flatten()

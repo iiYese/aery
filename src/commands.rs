@@ -1,4 +1,7 @@
-use crate::relation::{CleanupPolicy, Edges, Participant, Relation, RootMarker, ZstOrPanic};
+use crate::{
+    events::{CleanupEvent, TargetEvent, TargetOp},
+    relation::{CleanupPolicy, Edges, Participant, Relation, RelationId, RootMarker, ZstOrPanic},
+};
 
 use bevy::{
     ecs::{
@@ -10,7 +13,6 @@ use bevy::{
     utils::{HashMap, HashSet},
 };
 
-use core::any::TypeId;
 use indexmap::IndexSet;
 use std::{collections::VecDeque, marker::PhantomData};
 
@@ -21,21 +23,21 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
 
     let (has_hosts, has_targets) = (
         edges.hosts[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .map(|hosts| !hosts.is_empty())
             .unwrap_or(false),
         edges.targets[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .map(|targets| !targets.is_empty())
             .unwrap_or(false),
     );
 
     if !has_hosts {
-        edges.hosts[R::CLEANUP_POLICY as usize].remove(&TypeId::of::<R>());
+        edges.hosts[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
     }
 
     if !has_targets {
-        edges.targets[R::CLEANUP_POLICY as usize].remove(&TypeId::of::<R>());
+        edges.targets[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
     }
 
     if edges
@@ -74,7 +76,7 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
 
 #[derive(Resource, Default)]
 pub(crate) struct RefragmentHooks {
-    hooks: HashMap<TypeId, fn(&mut World, Entity)>,
+    hooks: HashMap<RelationId, fn(&mut World, Entity)>,
 }
 
 /// Command to set relationship target for entities. If either of the participants do not exist or
@@ -134,7 +136,7 @@ where
         world
             .resource_mut::<RefragmentHooks>()
             .hooks
-            .insert(TypeId::of::<R>(), refragment::<R>);
+            .insert(RelationId::of::<R>(), refragment::<R>);
 
         let mut target_edges = world
             .get_mut::<Edges>(self.target)
@@ -142,17 +144,17 @@ where
             .unwrap_or_default();
 
         target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .entry(TypeId::of::<R>())
+            .entry(RelationId::of::<R>())
             .or_default()
             .insert(self.host);
 
         let symmetric_set = R::SYMMETRIC
             && !target_edges.targets[R::CLEANUP_POLICY as usize]
-                .entry(TypeId::of::<R>())
+                .entry(RelationId::of::<R>())
                 .or_default()
                 .contains(&self.host);
 
-        if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&TypeId::of::<R>()) {
+        if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&RelationId::of::<R>()) {
             world.entity_mut(self.target).insert(RootMarker::<R> {
                 _phantom: PhantomData,
             });
@@ -168,12 +170,12 @@ where
             .unwrap_or_default();
 
         let old = host_edges.targets[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .and_then(|targets| targets.first())
             .copied();
 
         host_edges.targets[R::CLEANUP_POLICY as usize]
-            .entry(TypeId::of::<R>())
+            .entry(RelationId::of::<R>())
             .or_default()
             .insert(self.target);
 
@@ -183,6 +185,13 @@ where
                 _phantom: PhantomData,
             },
         ));
+
+        world.send_event(TargetEvent {
+            host: self.host,
+            target_op: TargetOp::Set,
+            target: self.target,
+            relation_id: RelationId::of::<R>(),
+        });
 
         if symmetric_set {
             Command::apply(
@@ -258,7 +267,7 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
         let Some(refragment) = world
             .resource::<RefragmentHooks>()
             .hooks
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .copied()
         else {
             return
@@ -280,19 +289,19 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
         };
 
         host_edges.targets[R::CLEANUP_POLICY as usize]
-            .entry(TypeId::of::<R>())
+            .entry(RelationId::of::<R>())
             .and_modify(|hosts| {
                 hosts.remove(&self.target);
             });
 
         target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .entry(TypeId::of::<R>())
+            .entry(RelationId::of::<R>())
             .and_modify(|hosts| {
                 hosts.remove(&self.host);
             });
 
         let target_orphaned = target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .get(&TypeId::of::<R>())
+            .get(&RelationId::of::<R>())
             .map_or(false, IndexSet::is_empty);
 
         world.entity_mut(self.host).insert(host_edges);
@@ -311,6 +320,13 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 world,
             );
         }
+
+        world.send_event(TargetEvent {
+            host: self.host,
+            target_op: TargetOp::Unset,
+            target: self.target,
+            relation_id: RelationId::of::<R>(),
+        });
 
         refragment(world, self.host);
         refragment(world, self.target);
@@ -331,7 +347,7 @@ impl<R: Relation> Command for UnsetAll<R> {
     fn apply(self, world: &mut World) {
         while let Some(target) = world
             .get::<Edges>(self.entity)
-            .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
+            .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&RelationId::of::<R>()))
             .and_then(|targets| targets.first())
             .copied()
         {
@@ -363,7 +379,7 @@ impl<R: Relation> Command for Withdraw<R> {
     fn apply(self, world: &mut World) {
         while let Some(host) = world
             .get::<Edges>(self.entity)
-            .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&TypeId::of::<R>()))
+            .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&RelationId::of::<R>()))
             .and_then(|targets| targets.first())
             .copied()
         {
@@ -389,7 +405,7 @@ pub struct CheckedDespawn {
 
 impl Command for CheckedDespawn {
     fn apply(self, world: &mut World) {
-        let mut to_refrag = HashMap::<TypeId, HashSet<Entity>>::new();
+        let mut to_refrag = HashMap::<RelationId, HashSet<Entity>>::new();
         let mut to_despawn = HashSet::<Entity>::from([self.entity]);
         let mut queue = VecDeque::from([self.entity]);
 
@@ -562,6 +578,7 @@ impl Command for CheckedDespawn {
 
         for entity in to_despawn {
             world.despawn(entity);
+            world.send_event(CleanupEvent { entity });
         }
 
         for (typeid, entities) in to_refrag {
@@ -690,7 +707,6 @@ impl<'a> RelationCommands<'a> for Option<EntityMut<'a>> {
 mod tests {
     use super::*;
     use crate::{self as aery, prelude::*};
-    use core::any::TypeId;
     use std::array::from_fn;
 
     fn has_edges(world: &World, entity: Entity) -> bool {
@@ -709,13 +725,13 @@ mod tests {
         let host_is_targeting = world
             .get::<Edges>(host)
             .map(|edges| &edges.targets[R::CLEANUP_POLICY as usize])
-            .and_then(|bucket| bucket.get(&TypeId::of::<R>()))
+            .and_then(|bucket| bucket.get(&RelationId::of::<R>()))
             .map_or(false, |set| set.contains(&target));
 
         let target_is_hosted = world
             .get::<Edges>(target)
             .map(|edges| &edges.hosts[R::CLEANUP_POLICY as usize])
-            .and_then(|bucket| bucket.get(&TypeId::of::<R>()))
+            .and_then(|bucket| bucket.get(&RelationId::of::<R>()))
             .map_or(false, |set| set.contains(&host));
 
         if host_is_targeting != target_is_hosted {
