@@ -1,5 +1,5 @@
 use crate::{
-    relation::{EdgeWQ, Relation, ZstOrPanic},
+    relation::{EdgeWQ, EdgeWQItem, Relation, ZstOrPanic},
     tuple_traits::*,
 };
 use bevy::ecs::{
@@ -66,22 +66,12 @@ pub struct Relations<R: RelationSet> {
 }
 
 /// Struct that is used to track metadata for relation operations.
-pub struct Operations<Control, JoinedTypes = (), JoinedQueries = (), Traversal = ()> {
+pub struct Operations<Control, JoinedTypes = (), JoinedQueries = (), Traversal = (), Roots = ()> {
     control: Control,
     joined_types: PhantomData<JoinedTypes>,
     joined_queries: JoinedQueries,
     traversal: Traversal,
-}
-
-/// Struct that is used to track metadata for breadth first traversals.
-pub struct BreadthFirstTraversal<T, E, I>
-where
-    T: Relation,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
-{
-    roots: I,
-    _phantom: PhantomData<(T, E)>,
+    roots: Roots,
 }
 
 /// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
@@ -111,6 +101,7 @@ where
             joined_types: PhantomData,
             joined_queries: (),
             traversal: (),
+            roots: (),
         }
     }
 
@@ -123,7 +114,27 @@ where
             joined_types: PhantomData,
             joined_queries: (),
             traversal: (),
+            roots: (),
         }
+    }
+}
+
+pub trait Traversal {
+    fn iter<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a>;
+}
+
+pub struct BreadthFirstAscent<R: Relation>(PhantomData<R>);
+pub struct BreadthFirstDescent<R: Relation>(PhantomData<R>);
+
+impl<R: Relation> Traversal for BreadthFirstAscent<R> {
+    fn iter<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
+        edges.edges.iter_targets::<R>()
+    }
+}
+
+impl<R: Relation> Traversal for BreadthFirstDescent<R> {
+    fn iter<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
+        edges.edges.iter_hosts::<R>()
     }
 }
 
@@ -202,33 +213,47 @@ where
 /// | 4         | _ | 1 |
 /// | 5         | _ | 2 |
 /// | 6         | _ | 2 |
-pub trait BreadthFirst<E, I>
+pub trait Traverse<E, I>
 where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
     type Out<T: Relation>;
-    fn breadth_first<T: Relation>(self, roots: I) -> Self::Out<T>;
+    type OutDown<T: Relation>;
+
+    fn traverse<T: Relation>(self, roots: I) -> Self::Out<T>;
+    fn traverse_down<T: Relation>(self, roots: I) -> Self::OutDown<T>;
 }
 
-impl<Control, JoinedTypes, JoinedQueries, Traversal, E, I> BreadthFirst<E, I>
+impl<Control, JoinedTypes, JoinedQueries, Traversal, E, I> Traverse<E, I>
     for Operations<Control, JoinedTypes, JoinedQueries, Traversal>
 where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
     type Out<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstTraversal<T, E, I>>;
+        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstAscent<T>, I>;
 
-    fn breadth_first<T: Relation>(self, roots: I) -> Self::Out<T> {
+    type OutDown<T: Relation> =
+        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, I>;
+
+    fn traverse<T: Relation>(self, roots: I) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
-            traversal: BreadthFirstTraversal {
-                roots,
-                _phantom: PhantomData,
-            },
+            traversal: BreadthFirstAscent::<T>(PhantomData),
+            roots,
+        }
+    }
+
+    fn traverse_down<T: Relation>(self, roots: I) -> Self::OutDown<T> {
+        Operations {
+            control: self.control,
+            joined_types: self.joined_types,
+            joined_queries: self.joined_queries,
+            traversal: BreadthFirstDescent::<T>(PhantomData),
+            roots,
         }
     }
 }
@@ -329,8 +354,8 @@ where
     fn join<T: Relation>(self, item: Item) -> Self::Out<T>;
 }
 
-impl<Item, Control, JoinedTypes, JoinedQueries, Traversal> Join<Item>
-    for Operations<Control, JoinedTypes, JoinedQueries, Traversal>
+impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Roots> Join<Item>
+    for Operations<Control, JoinedTypes, JoinedQueries, Traversal, Roots>
 where
     Item: for<'a> Joinable<'a, 1>,
     JoinedTypes: Append,
@@ -341,6 +366,7 @@ where
         <JoinedTypes as Append>::Out<T>,
         <JoinedQueries as Append>::Out<Item>,
         Traversal,
+        Roots,
     >;
 
     fn join<T: Relation>(self, item: Item) -> Self::Out<T> {
@@ -349,6 +375,7 @@ where
             joined_types: PhantomData,
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
+            roots: self.roots,
         }
     }
 }
@@ -535,12 +562,12 @@ where
 }
 
 impl<Q, R, F, T, E, I> ForEachPermutations<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), BreadthFirstTraversal<T, E, I>>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Relation,
+    T: Traversal,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -553,7 +580,6 @@ where
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
     {
         let mut queue = self
-            .traversal
             .roots
             .into_iter()
             .map(|e| *e.borrow())
@@ -564,7 +590,7 @@ where
                 continue
             };
 
-            for e in relations.edges.edges.iter_hosts::<T>() {
+            for e in T::iter(&relations.edges) {
                 let Ok(joined_queries) = self.control.get(e) else {
                     continue
                 };
@@ -580,7 +606,7 @@ where
                 }
             }
 
-            for e in relations.edges.edges.iter_hosts::<T>() {
+            for e in T::iter(&relations.edges) {
                 queue.push_back(e);
             }
         }
@@ -588,17 +614,12 @@ where
 }
 
 impl<Q, R, F, T, E, I> ForEachPermutations<0>
-    for Operations<
-        &'_ mut Query<'_, '_, (Q, Relations<R>), F>,
-        (),
-        (),
-        BreadthFirstTraversal<T, E, I>,
-    >
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Relation,
+    T: Traversal,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -611,7 +632,6 @@ where
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
     {
         let mut queue = self
-            .traversal
             .roots
             .into_iter()
             .map(|e| *e.borrow())
@@ -625,7 +645,7 @@ where
                 continue
             };
 
-            for e in relations.edges.edges.iter_hosts::<T>() {
+            for e in T::iter(&relations.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(joined_queries) = (unsafe { self.control.get_unchecked(e) }) else {
                     continue
@@ -642,7 +662,7 @@ where
                 }
             }
 
-            for e in relations.edges.edges.iter_hosts::<T>() {
+            for e in T::iter(&relations.edges) {
                 queue.push_back(e);
             }
         }
@@ -672,17 +692,12 @@ pub trait ForEachPermutations3Arity<const N: usize> {
 }
 
 impl<Q, R, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<
-        &'_ Query<'_, '_, (Q, Relations<R>), F>,
-        JoinedTypes,
-        JoinedQueries,
-        BreadthFirstTraversal<T, E, I>,
-    >
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, T, I>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Relation,
+    T: Traversal,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
@@ -702,7 +717,6 @@ where
         ) -> Ret,
     {
         let mut queue = self
-            .traversal
             .roots
             .into_iter()
             .map(|e| *e.borrow())
@@ -713,7 +727,7 @@ where
                 continue
             };
 
-            for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
+            for descendant in T::iter(&ancestor_edges.edges) {
                 let Ok((mut descendant_components, descendant_edges)) = self
                     .control
                     .get(descendant)
@@ -754,7 +768,7 @@ where
                 }
             }
 
-            for e in ancestor_edges.edges.edges.iter_hosts::<T>() {
+            for e in T::iter(&ancestor_edges.edges) {
                 queue.push_back(e);
             }
         }
@@ -762,17 +776,12 @@ where
 }
 
 impl<Q, R, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<
-        &'_ mut Query<'_, '_, (Q, Relations<R>), F>,
-        JoinedTypes,
-        JoinedQueries,
-        BreadthFirstTraversal<T, E, I>,
-    >
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, T, I>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Relation,
+    T: Traversal,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
@@ -792,7 +801,6 @@ where
         ) -> Ret,
     {
         let mut queue = self
-            .traversal
             .roots
             .into_iter()
             .map(|e| *e.borrow())
@@ -806,7 +814,7 @@ where
                 continue
             };
 
-            for descendant in ancestor_edges.edges.edges.iter_hosts::<T>() {
+            for descendant in T::iter(&ancestor_edges.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok((mut descendant_components, descendant_edges)) = (unsafe {
                     self.control.get_unchecked(descendant)
@@ -846,7 +854,8 @@ where
                     }
                 }
             }
-            for e in ancestor_edges.edges.edges.iter_hosts::<T>() {
+
+            for e in T::iter(&ancestor_edges.edges) {
                 queue.push_back(e);
             }
         }
@@ -913,31 +922,31 @@ mod compile_tests {
             .for_each(|a, (b, c)| {});
     }
 
-    fn breadth_first_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
+    fn traverse_down_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.ops()
-            .breadth_first::<R0>(None::<Entity>)
+            .traverse_down::<R0>(None::<Entity>)
             .for_each(|a0, a1| {});
     }
 
-    fn breadth_first_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+    fn traverse_down_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
-            .breadth_first::<R0>(None::<Entity>)
+            .traverse_down::<R0>(None::<Entity>)
             .join::<R1>(&right)
             .for_each(|a0, a1, b| {});
     }
 
-    fn breadth_first_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
+    fn traverse_down_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
         left.ops_mut()
-            .breadth_first::<R0>(None::<Entity>)
+            .traverse_down::<R0>(None::<Entity>)
             .for_each(|a0, a1| {});
     }
 
-    fn breadth_first_mut_joined_mut(
+    fn traverse_down_mut_joined_mut(
         left: Query<(&A, Relations<(R0, R1)>)>,
         mut right: Query<&mut B>,
     ) {
         left.ops()
-            .breadth_first::<R0>(None::<Entity>)
+            .traverse_down::<R0>(None::<Entity>)
             .join::<R1>(&mut right)
             .for_each(|a0, a1, b| {});
     }

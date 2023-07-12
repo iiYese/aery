@@ -1,4 +1,4 @@
-use crate::relation::{Relation, RelationId};
+use crate::{relation::RelationId, Var};
 
 use bevy::ecs::{entity::Entity, event::Event};
 use std::cmp::PartialEq;
@@ -7,35 +7,6 @@ use std::cmp::PartialEq;
 pub enum TargetOp {
     Set,
     Unset,
-}
-
-pub enum Var<T> {
-    /// Value specified.
-    Val(T),
-    /// Wildcard. Will match anything.
-    Wc,
-}
-
-impl<T: PartialEq> PartialEq<T> for Var<T> {
-    fn eq(&self, other: &T) -> bool {
-        match self {
-            Self::Val(v) if v == other => true,
-            Self::Wc => true,
-            _ => false,
-        }
-    }
-}
-
-impl From<Entity> for Var<Entity> {
-    fn from(value: Entity) -> Self {
-        Self::Val(value)
-    }
-}
-
-impl<R: Relation> From<R> for Var<RelationId> {
-    fn from(_: R) -> Self {
-        Self::Val(RelationId::of::<R>())
-    }
 }
 
 #[derive(Event, Clone, Copy, Debug)]

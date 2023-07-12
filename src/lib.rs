@@ -1,5 +1,6 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
+#![allow(clippy::let_unit_value)]
 
 //! # Aery
 //! A plugin that adds a subset of Entity Relationship features to Bevy using Non-fragmenting
@@ -77,25 +78,44 @@ pub mod relation;
 pub mod scope;
 pub mod tuple_traits;
 
-pub mod prelude {
-    pub use crate::{
-        commands::RelationCommands,
-        events::{TargetEvent, TargetOp, Var},
-        operations::{
-            AeryQueryExt, BreadthFirst, ControlFlow, ForEachPermutations,
-            ForEachPermutations3Arity, Join, Relations,
-        },
-        relation::{CleanupPolicy, Participates, Relation, Root, ZstOrPanic},
-        scope::Scope,
-        tuple_traits::{Joinable, RelationSet},
-        Aery,
-    };
-    pub use aery_macros::*;
-}
-
-use bevy::app::{App, Plugin};
 use commands::RefragmentHooks;
 use events::{CleanupEvent, TargetEvent};
+use relation::{Relation, RelationId, ZstOrPanic};
+
+use bevy::{
+    app::{App, Plugin},
+    ecs::entity::Entity,
+};
+
+pub enum Var<T> {
+    /// Sepcific value.
+    Val(T),
+    /// Wildcard. Will match anything.
+    Wc,
+}
+
+impl<T: PartialEq> PartialEq<T> for Var<T> {
+    fn eq(&self, other: &T) -> bool {
+        match self {
+            Self::Val(v) if v == other => true,
+            Self::Wc => true,
+            _ => false,
+        }
+    }
+}
+
+impl From<Entity> for Var<Entity> {
+    fn from(value: Entity) -> Self {
+        Self::Val(value)
+    }
+}
+
+impl<R: Relation> From<R> for Var<RelationId> {
+    fn from(_: R) -> Self {
+        let _ = R::ZST_OR_PANIC;
+        Self::Val(RelationId::of::<R>())
+    }
+}
 
 pub struct Aery;
 
@@ -105,4 +125,21 @@ impl Plugin for Aery {
             .add_event::<TargetEvent>()
             .add_event::<CleanupEvent>();
     }
+}
+
+pub mod prelude {
+    pub use super::Var::{self, Wc};
+    pub use crate::{
+        commands::RelationCommands,
+        events::{TargetEvent, TargetOp},
+        operations::{
+            AeryQueryExt, ControlFlow, ForEachPermutations, ForEachPermutations3Arity, Join,
+            Relations, Traverse,
+        },
+        relation::{CleanupPolicy, Participates, Relation, Root, ZstOrPanic},
+        scope::Scope,
+        tuple_traits::{Joinable, RelationSet},
+        Aery,
+    };
+    pub use aery_macros::*;
 }
