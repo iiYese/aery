@@ -87,6 +87,7 @@ use bevy::{
     ecs::entity::Entity,
 };
 
+/// A type to enable wildcard APIs
 pub enum Var<T> {
     /// Sepcific value.
     Val(T),
@@ -131,7 +132,7 @@ pub mod prelude {
     pub use super::Var::{self, Wc};
     pub use crate::{
         commands::RelationCommands,
-        events::{TargetEvent, TargetOp},
+        events::{TargetEvent, TgtOp},
         operations::{
             AeryQueryExt, ControlFlow, ForEachPermutations, ForEachPermutations3Arity, Join,
             Relations, Traverse,
