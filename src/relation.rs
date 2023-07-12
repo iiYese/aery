@@ -1,3 +1,5 @@
+use crate::Var;
+
 use bevy::{
     ecs::{
         component::Component,
@@ -17,6 +19,13 @@ pub struct RelationId(TypeId);
 impl RelationId {
     pub fn of<R: Relation>() -> Self {
         Self(TypeId::of::<R>())
+    }
+}
+
+impl<R: Relation> From<R> for Var<RelationId> {
+    fn from(_: R) -> Self {
+        let _ = R::ZST_OR_PANIC;
+        Self::Val(RelationId::of::<R>())
     }
 }
 

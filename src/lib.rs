@@ -80,7 +80,6 @@ pub mod tuple_traits;
 
 use commands::RefragmentHooks;
 use events::{CleanupEvent, TargetEvent};
-use relation::{Relation, RelationId, ZstOrPanic};
 
 use bevy::{
     app::{App, Plugin},
@@ -108,13 +107,6 @@ impl<T: PartialEq> PartialEq<T> for Var<T> {
 impl From<Entity> for Var<Entity> {
     fn from(value: Entity) -> Self {
         Self::Val(value)
-    }
-}
-
-impl<R: Relation> From<R> for Var<RelationId> {
-    fn from(_: R) -> Self {
-        let _ = R::ZST_OR_PANIC;
-        Self::Val(RelationId::of::<R>())
     }
 }
 

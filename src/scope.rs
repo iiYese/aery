@@ -14,6 +14,10 @@ use std::marker::PhantomData;
 /// All functions will set relations if thye do not exist including overwriting exclusive relations!
 /// Since changing relations can trigger cleanup procedures that might despawn the `Entity` referred
 /// to by `EntytMut<'_>` each method is consuming and returns an `Option<EntityMut<'_>>`.
+///
+/// For convenience `Scope<'_>` is also implemented for `Option<EntityMut<'_>>`. The methods
+/// are essentially their non-option equivalent wrapped in an implicit [`Option::and_then`] call
+/// except they emit warnings when the option is `None`.
 pub trait Scope<'a>: Sized {
     /// Spawns a target and gives mutable access to it via `EntityMut<'_>`.
     fn scope_new<R: Relation>(self, func: impl FnMut(EntityMut<'_>)) -> Option<EntityMut<'a>>;
@@ -135,9 +139,6 @@ impl<'a> Scope<'a> for EntityMut<'a> {
     }
 }
 
-/// For convenience `Scope<'_>` is also implemented for `Option<EntityMut<'_>>`. The methods
-/// are essentially their non-option equivalent wrapped in an implicit [`Option::and_then`] call
-/// except they emit warnings when the option is `None`.
 impl<'a> Scope<'a> for Option<EntityMut<'a>> {
     fn scope_new<R: Relation>(self, func: impl FnMut(EntityMut<'_>)) -> Self {
         match self {
