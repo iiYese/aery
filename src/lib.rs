@@ -138,7 +138,7 @@ pub mod prelude {
             AeryQueryExt, ControlFlow, ForEachPermutations, ForEachPermutations3Arity, Join,
             Relations, Traverse,
         },
-        relation::{CleanupPolicy, Participates, Relation, Root, ZstOrPanic},
+        relation::{CheckRelations, CleanupPolicy, Participates, Relation, Root, ZstOrPanic},
         scope::Scope,
         tuple_traits::{Joinable, RelationSet},
         Aery,

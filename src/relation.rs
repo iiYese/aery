@@ -71,42 +71,36 @@ pub struct Participates<R: Relation> {
 /// #[cleanup(policy = "Recursive")]
 /// struct R;
 ///
-/// fn sys(world: &mut World) {
-///     let ent0 = world
-///         .spawn_empty()
+/// fn sys(wrld: &mut World) {
+///     wrld.spawn_empty()
 ///         .scope::<O>(|parent, ent1| {
 ///             ent1.set::<R>(parent)
 ///                 .scope::<O>(|parent, ent3| {})
 ///                 .scope::<O>(|parent, ent4| { ent4.set::<R>(parent); });
 ///         })
-///         .scope::<O>(|ent2| {
-///             ent2.scope::<R>(|ent5| {})
-///                 .scope::<R>(|ent6| {});
+///         .scope::<O>(|_, ent2| {
+///             ent2.scope::<R>(|_, ent5| {})
+///                 .scope::<R>(|_, ent6| {});
 ///         })
-///         .unwrap()
-///         .id();
-///
-///     // Results in:
-///     //            E0
-///     //           // \
-///     //          //   \
-///     //         R,O    O
-///     //        //       \
-///     //       //         \
-///     //      E1           E2
-///     //     / \\         / \
-///     //    O   R,O      R   R
-///     //   /     \\     /     \
-///     //  E3      E4   E5      E6
-///
-///     world.checked_despawn(ent0);
-///
-///     // After cleanup:
-///     //                   E2
-///     //                  / \
-///     //      E3         R   R
-///     //                /     \
-///     //               E5      E6
+///         // Results in:
+///         //            E0
+///         //           // \
+///         //          //   \
+///         //         R,O    O
+///         //        //       \
+///         //       //         \
+///         //      E1           E2
+///         //     / \\         / \
+///         //    O   R,O      R   R
+///         //   /     \\     /     \
+///         //  E3      E4   E5      E6
+///         .checked_despawn();
+///         // After cleanup:
+///         //                   E2
+///         //                  / \
+///         //      E3         R   R
+///         //                /     \
+///         //               E5      E6
 /// }
 /// ```
 #[derive(Clone, Copy)]
@@ -196,19 +190,16 @@ pub struct EdgeWQ {
 }
 
 /// Trait to check what relations exist.
-trait CheckRelations {
+pub trait CheckRelations {
     /// Check if another entity is targeting this one via a relation.
     /// ```
-    /// use bevy::prelude::*;
-    /// use aery::prelude::*;
-    ///
-    /// //..
-    ///
+    ///# use bevy::prelude::*;
+    ///# use aery::{prelude::*, relation::EdgeWQItem};
     ///#
-    ///##[derive(Relation)]
-    ///#struct R;
+    ///# #[derive(Relation)]
+    ///# struct R;
     ///#
-    ///#fn foo(entity: Edges, e: Entity) {
+    ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
     /// // Check if entity is the target of `e` via `R`
     /// entity.has_host(R, e);
     ///
@@ -217,22 +208,19 @@ trait CheckRelations {
     ///
     /// // Check if entity is the target of any entity via any relationship
     /// entity.has_host(Wc, Wc);
-    ///#}
+    ///# }
     /// ```
     fn has_host(&self, relation: impl Into<Var<RelationId>>, host: impl Into<Var<Entity>>) -> bool;
 
     /// Check if entity is targeting another via a relation.
     /// ```
-    /// use bevy::prelude::*;
-    /// use aery::prelude::*;
-    ///
-    /// //..
-    ///
+    ///# use bevy::prelude::*;
+    ///# use aery::{prelude::*, relation::EdgeWQItem};
     ///#
-    ///##[derive(Relation)]
-    ///#struct R;
+    ///# #[derive(Relation)]
+    ///# struct R;
     ///#
-    ///#fn foo(entity: Edges, e: Entity) {
+    ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
     /// // Check if entity targets `e` via `R`
     /// entity.has_target(R, e);
     ///
@@ -241,7 +229,7 @@ trait CheckRelations {
     ///
     /// // Check if entity targets of any other entity via any relationship
     /// entity.has_target(Wc, Wc);
-    ///#}
+    ///# }
     /// ```
     fn has_target(
         &self,
