@@ -66,12 +66,12 @@ pub struct Relations<R: RelationSet> {
 }
 
 /// Struct that is used to track metadata for relation operations.
-pub struct Operations<Control, JoinedTypes = (), JoinedQueries = (), Traversal = (), Roots = ()> {
+pub struct Operations<Control, JoinedTypes = (), JoinedQueries = (), Traversal = (), Starts = ()> {
     control: Control,
     joined_types: PhantomData<JoinedTypes>,
     joined_queries: JoinedQueries,
     traversal: Traversal,
-    roots: Roots,
+    starts: Starts,
 }
 
 /// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
@@ -101,7 +101,7 @@ where
             joined_types: PhantomData,
             joined_queries: (),
             traversal: (),
-            roots: (),
+            starts: (),
         }
     }
 
@@ -114,7 +114,7 @@ where
             joined_types: PhantomData,
             joined_queries: (),
             traversal: (),
-            roots: (),
+            starts: (),
         }
     }
 }
@@ -138,11 +138,14 @@ impl<R: Relation> Traversal for BreadthFirstDescent<R> {
     }
 }
 
-/// A trait to implement the `breadth_first` functionality of the operations API. Any `T` in
-/// `breadth_first::<T>(roots)` must be present in the [`RelationSet`] of the control query.
-/// Diamonds are impossible with `Exclusive` relations where the edges face bottom up instead of
-/// top down. For this reason bottom up graphs are the only pattern that is recognized for
-/// traversal.
+/// The traversal functionality of the operations API. Any `T` in `breadth_first::<T>(roots)` must
+/// be present in the [`RelationSet`] of the control query. Diamonds are impossible with `Exclusive`
+/// relations where the edges face bottom up instead of top down. For this reason bottom up graphs
+/// are the only pattern that is recognized.
+///
+/// To descend is to traverse hosts and to ascend is to traverse targets. Descent is breadth first
+/// and since relations support multi arity ascent is also breadth first.
+///
 /// Uses:
 /// - [`ForEachPermutations`] for operations with just traversals.
 /// - [`ForEachPermutations3Arity`] for operations with traversals and joins.
@@ -221,8 +224,8 @@ where
     type Out<T: Relation>;
     type OutDown<T: Relation>;
 
-    fn traverse<T: Relation>(self, roots: I) -> Self::Out<T>;
-    fn traverse_down<T: Relation>(self, roots: I) -> Self::OutDown<T>;
+    fn traverse_up<T: Relation>(self, starts: I) -> Self::Out<T>;
+    fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T>;
 }
 
 impl<Control, JoinedTypes, JoinedQueries, Traversal, E, I> Traverse<E, I>
@@ -237,23 +240,23 @@ where
     type OutDown<T: Relation> =
         Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, I>;
 
-    fn traverse<T: Relation>(self, roots: I) -> Self::Out<T> {
+    fn traverse_up<T: Relation>(self, starts: I) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: BreadthFirstAscent::<T>(PhantomData),
-            roots,
+            starts,
         }
     }
 
-    fn traverse_down<T: Relation>(self, roots: I) -> Self::OutDown<T> {
+    fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: BreadthFirstDescent::<T>(PhantomData),
-            roots,
+            starts,
         }
     }
 }
@@ -375,7 +378,7 @@ where
             joined_types: PhantomData,
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
-            roots: self.roots,
+            starts: self.starts,
         }
     }
 }
@@ -580,7 +583,7 @@ where
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
     {
         let mut queue = self
-            .roots
+            .starts
             .into_iter()
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
@@ -632,7 +635,7 @@ where
         Func: for<'f, 'l, 'r> FnMut(&'f mut Self::Left<'l>, Self::Right<'r>) -> Ret,
     {
         let mut queue = self
-            .roots
+            .starts
             .into_iter()
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
@@ -717,25 +720,25 @@ where
         ) -> Ret,
     {
         let mut queue = self
-            .roots
+            .starts
             .into_iter()
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
         'queue: while let Some(entity) = queue.pop_front() {
-            let Ok((mut ancestor_components, ancestor_edges)) = self.control.get(entity) else {
+            let Ok((mut prev_components, prev_edges)) = self.control.get(entity) else {
                 continue
             };
 
-            for descendant in T::iter(&ancestor_edges.edges) {
-                let Ok((mut descendant_components, descendant_edges)) = self
+            for curr in T::iter(&prev_edges.edges) {
+                let Ok((mut curr_components, curr_edges)) = self
                     .control
-                    .get(descendant)
+                    .get(curr)
                 else {
                     continue
                 };
 
-                let mut edge_product = JoinedTypes::product(descendant_edges.edges);
+                let mut edge_product = JoinedTypes::product(curr_edges.edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -746,8 +749,8 @@ where
                     }
 
                     match func(
-                        &mut ancestor_components,
-                        &mut descendant_components,
+                        &mut prev_components,
+                        &mut curr_components,
                         Joinable::join(&mut self.joined_queries, entities),
                     )
                     .into()
@@ -760,7 +763,7 @@ where
                         }
                         ControlFlow::Probe => {
                             queue.clear();
-                            queue.push_back(descendant);
+                            queue.push_back(curr);
                             continue 'queue;
                         }
                         _ => {}
@@ -768,7 +771,7 @@ where
                 }
             }
 
-            for e in T::iter(&ancestor_edges.edges) {
+            for e in T::iter(&prev_edges.edges) {
                 queue.push_back(e);
             }
         }
@@ -801,28 +804,28 @@ where
         ) -> Ret,
     {
         let mut queue = self
-            .roots
+            .starts
             .into_iter()
             .map(|e| *e.borrow())
             .collect::<VecDeque<Entity>>();
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((mut ancestor_components, ancestor_edges)) = (unsafe {
+            let Ok((mut prev_components, prev_edges)) = (unsafe {
                 self.control.get_unchecked(entity)
             }) else {
                 continue
             };
 
-            for descendant in T::iter(&ancestor_edges.edges) {
+            for curr in T::iter(&prev_edges.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
-                let Ok((mut descendant_components, descendant_edges)) = (unsafe {
-                    self.control.get_unchecked(descendant)
+                let Ok((mut curr_components, curr_edges)) = (unsafe {
+                    self.control.get_unchecked(curr)
                 }) else {
                     continue
                 };
 
-                let mut edge_product = JoinedTypes::product(descendant_edges.edges);
+                let mut edge_product = JoinedTypes::product(curr_edges.edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -833,8 +836,8 @@ where
                     }
 
                     match func(
-                        &mut ancestor_components,
-                        &mut descendant_components,
+                        &mut prev_components,
+                        &mut curr_components,
                         Joinable::join(&mut self.joined_queries, entities),
                     )
                     .into()
@@ -847,7 +850,7 @@ where
                         }
                         ControlFlow::Probe => {
                             queue.clear();
-                            queue.push_back(descendant);
+                            queue.push_back(curr);
                             continue 'queue;
                         }
                         _ => {}
@@ -855,7 +858,7 @@ where
                 }
             }
 
-            for e in T::iter(&ancestor_edges.edges) {
+            for e in T::iter(&prev_edges.edges) {
                 queue.push_back(e);
             }
         }
@@ -922,31 +925,28 @@ mod compile_tests {
             .for_each(|a, (b, c)| {});
     }
 
-    fn traverse_down_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
+    fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.ops()
-            .traverse_down::<R0>(None::<Entity>)
+            .traverse::<R0>(None::<Entity>)
             .for_each(|a0, a1| {});
     }
 
-    fn traverse_down_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+    fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
-            .traverse_down::<R0>(None::<Entity>)
+            .traverse::<R0>(None::<Entity>)
             .join::<R1>(&right)
             .for_each(|a0, a1, b| {});
     }
 
-    fn traverse_down_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
+    fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
         left.ops_mut()
-            .traverse_down::<R0>(None::<Entity>)
+            .traverse::<R0>(None::<Entity>)
             .for_each(|a0, a1| {});
     }
 
-    fn traverse_down_mut_joined_mut(
-        left: Query<(&A, Relations<(R0, R1)>)>,
-        mut right: Query<&mut B>,
-    ) {
+    fn traverse_mut_joined_mut(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
         left.ops()
-            .traverse_down::<R0>(None::<Entity>)
+            .traverse::<R0>(None::<Entity>)
             .join::<R1>(&mut right)
             .for_each(|a0, a1, b| {});
     }

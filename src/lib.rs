@@ -15,7 +15,7 @@
 //!   - Traversing
 //!   - Spawning
 //!
-//! # Basic:
+//! # API tour:
 //! ```
 //! use bevy::prelude::*;
 //! use aery::prelude::*;
@@ -36,7 +36,7 @@
 //!
 //! #[derive(Relation)]
 //! #[cleanup(policy = "Recursive")]
-//! struct Child;
+//! struct ChildOf;
 //!
 //! #[derive(Relation)]
 //! #[multi]
@@ -46,13 +46,13 @@
 //!     // A hierarchy of Foos with (chocolate? OwO) Bars in their Bags
 //!     commands.add(|wrld: &mut World| {
 //!         wrld.spawn(Foo)
-//!             .scope_down::<Child>(|mut child| {
+//!             .scope::<ChildOf>(|_, mut child| {
 //!                 child.insert(Foo);
-//!                 child.scope::<Bag>(|mut bag| { bag.insert(Bar); });
+//!                 child.scope_tgt::<Bag>(|_, mut bag| { bag.insert(Bar); });
 //!             })
-//!             .scope_down::<Child>(|mut child| {
+//!             .scope::<ChildOf>(|_, mut child| {
 //!                 child.insert(Foo);
-//!                 child.scope::<Bag>(|mut bag| { bag.insert(Bar); });
+//!                 child.scope_tgt::<Bag>(|_, mut bag| { bag.insert(Bar); });
 //!             });
 //!     })
 //! }
@@ -64,7 +64,7 @@
 //! ) {
 //!     foos.ops()
 //!         .join::<Bag>(&bars)
-//!         .breadth_first::<Child>(roots.iter())
+//!         .traverse::<Child>(roots.iter())
 //!         .for_each(|foo_parent, foo, bar| {
 //!             // ..
 //!         })
@@ -100,6 +100,15 @@ impl<T: PartialEq> PartialEq<T> for Var<T> {
             Self::Val(v) if v == other => true,
             Self::Wc => true,
             _ => false,
+        }
+    }
+}
+
+impl<T> From<Option<T>> for Var<T> {
+    fn from(value: Option<T>) -> Self {
+        match value {
+            Some(value) => Self::Val(value),
+            None => Self::Wc,
         }
     }
 }

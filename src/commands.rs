@@ -79,7 +79,7 @@ pub(crate) struct RefragmentHooks {
     hooks: HashMap<RelationId, fn(&mut World, Entity)>,
 }
 
-/// Command to set relationship target for entities. If either of the participants do not exist or
+/// Command to set a relationship target for an entity. If either of the participants do not exist or
 /// the host tries to target itself the operation will be ignored and logged.
 pub struct Set<R>
 where
@@ -596,6 +596,18 @@ impl Command for CheckedDespawn {
     }
 }
 
+/// An extension API for `EntityMut<'_>` to sugar using relation commands.
+/// Since changing relations can trigger cleanup procedures that might despawn the `Entity` referred
+/// to by `EntytMut<'_>` each method is consuming and returns an `Option<EntityMut<'_>>`.
+///
+/// For convenience this trait is also implemented for `Option<EntityMut<'_>>`. Where the methods
+/// are essentially their non-option equivalent wrapped in an implicit [`Option::and_then`] call.
+/// `Option::<EntityMut<'_>>::set` will emit a warning if called on an option that is `None`.
+/// All of the other functions will not emit a warning as unsetting relations that don't exist and
+/// despawning entities that don't exist are not considered an error.
+///
+/// See [`Scope`] for extension APIs that can operate on relation participants including spawning
+/// them.
 pub trait RelationCommands<'a>: Sized {
     fn set<R: Relation>(self, target: Entity) -> Option<EntityMut<'a>>;
     fn unset<R: Relation>(self, target: Entity) -> Option<EntityMut<'a>>;
