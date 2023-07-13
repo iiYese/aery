@@ -74,14 +74,14 @@ pub struct Participates<R: Relation> {
 /// fn sys(world: &mut World) {
 ///     let ent0 = world
 ///         .spawn_empty()
-///         .scope_new::<O>(|parent, ent1| {
+///         .scope::<O>(|parent, ent1| {
 ///             ent1.set::<R>(parent)
-///                 .scope_new::<O>(|parent, ent3| {})
-///                 .scope_new::<O>(|parent, ent4| { ent4.set::<R>(parent); });
+///                 .scope::<O>(|parent, ent3| {})
+///                 .scope::<O>(|parent, ent4| { ent4.set::<R>(parent); });
 ///         })
-///         .scope_new::<O>(|ent2| {
-///             ent2.scope_new::<R>(|ent5| {})
-///                 .scope_new::<R>(|ent6| {});
+///         .scope::<O>(|ent2| {
+///             ent2.scope::<R>(|ent5| {})
+///                 .scope::<R>(|ent6| {});
 ///         })
 ///         .unwrap()
 ///         .id();
@@ -113,12 +113,15 @@ pub struct Participates<R: Relation> {
 pub enum CleanupPolicy {
     /// Will do no further cleanup.
     Orphan,
-    /// Counted relationships "count" the number of hosts they have. If it ever reaches zero they
-    /// will delete themselves. This is effectively reference counting.
+
+    /// Entities that are the target of counted relationships *count* the number of hosts they have.
+    /// If it ever reaches zero they will delete themselves. This is effectively reference counting.
     Counted,
-    /// When targets of recursively cleaning relations are despawned they also delete all their
-    /// hosts. Unsetting **does not** trigger recursive cleanup.
+
+    /// When entities that are the target of recursive relationships are despawned they also
+    /// *recursively* despawn their hosts. Unsetting **does not** trigger recursive cleanup.
     Recursive,
+
     /// Total performs both counted and recursive cleanup.
     Total,
 }
@@ -151,7 +154,10 @@ pub trait Relation: 'static + Sized + Send + Sync {
     /// Setting an exclusive relation that is already set will unset the existing relation.
     const EXCLUSIVE: bool = true;
 
-    /// Whether or not a relation is symmetric. Ie. if e0 -R-> e1 then e1 -R-> e0.
+    /// Whether or not a relation is symmetric. Ie:
+    /// - When `e0 -R-> e1`
+    /// - Then `e0 <-R- e1`
+    ///
     /// For example it would make sense for a `MarriedTo` relation to be symmetric.
     const SYMMETRIC: bool = false;
 }
