@@ -493,7 +493,8 @@ pub enum ControlFlow {
     ///
     /// fn main() {
     ///     App::new()
-    ///         .add_systems(Startup, (setup, apply_deferred, sys).chain())
+    ///         .add_systems(Startup, setup)
+    ///         .add_systems(Update, sys)
     ///         .run()
     /// }
     /// ```
