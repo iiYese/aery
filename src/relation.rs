@@ -54,10 +54,11 @@ pub struct Participates<R: Relation> {
     filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
 }
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// Supported cleanup patterns. When entities have multiple relations with different cleanup
 /// policies each relation looks at the graph as if it were the only relation that existed.
 /// In effect the summation of their cleanup is applied.
-/// # Example
+/// ## Illustration
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
@@ -83,38 +84,37 @@ pub struct Participates<R: Relation> {
 ///             ent2.scope::<R>(|_, ent5| {})
 ///                 .scope::<R>(|_, ent6| {});
 ///         });
+///
 ///     // Trigger cleanup
 ///     root.checked_despawn();
 /// }
 /// ```
 /// ## After creation before cleanup:
-#[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// flowchart BT
-/// E1 ---> |R| E0
-/// E1 ---> |O| E0
+/// E1 --R--> E0
+/// E1 --O--> E0
 ///
-/// E2 ---> |O| E0
+/// E2 --O--> E0
 ///
-/// E3 ---> |O| E1
+/// E3 --O--> E1
 ///
-/// E4 ---> |R| E1
-/// E4 ---> |O| E1
+/// E4 --R--> E1
+/// E4 --O--> E1
 ///
-/// E5 ---> |R| E2
+/// E5 --R--> E2
 ///
-/// E6 ---> |R| E2
+/// E6 --R--> E2
 /// ```
 ///
 /// ## After cleanup:
-#[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// flowchart BT
 /// E3
 ///
-/// E5 ---> |R| E2
+/// E5 --R--> E2
 ///
-/// E6 ---> |R| E2
+/// E6 --R--> E2
 /// ```
 #[derive(Clone, Copy)]
 pub enum CleanupPolicy {
