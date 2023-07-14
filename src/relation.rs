@@ -54,7 +54,6 @@ pub struct Participates<R: Relation> {
     filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
 }
 
-/// TODO: Mermaid
 /// Supported cleanup patterns. When entities have multiple relations with different cleanup
 /// policies each relation looks at the graph as if it were the only relation that existed.
 /// In effect the summation of their cleanup is applied.
@@ -150,7 +149,17 @@ impl<T> ZstOrPanic for T {}
 /// The relation trait. This is what controls the cleanup, exclusivity & symmetry of a relation.
 /// Relations can be thought of as arrows. The terms Aery uses for the base and head of this arrow
 /// are "host" and "target" respectively. With both the host and target being entities. Both the
-/// host and target are "participants".
+/// host and target are "participants". Exclusive relations that face bottom up in hierarchies have
+/// many favorable properties so these are the default.
+///
+/// Note that relations **must** be a [ZST](https://doc.rust-lang.org/nomicon/exotic-sizes.html#zero-sized-types-zsts).
+/// A compile error will be produced if you try to use a relation that isn't one.
+///
+/// Aery only supports relations that are non-fragmenting. Ie. an entities archetype is not affected
+/// by the targets of its relations. See [this article](https://ajmmertens.medium.com/building-an-ecs-2-archetypes-and-vectorization-fe21690805f9)
+/// for more information. This isn't necessarily good or bad. There are various tradeoffs but it
+/// would be overwhelming to explain them all at once. To keep it quick the archetype fragmentation
+/// is comparable to `bevy_hierarchy` if it supported multiple hierarchy types.
 pub trait Relation: 'static + Sized + Send + Sync {
     /// How to clean up entities and relations when an entity with a relation is despawned
     /// or when a relation is unset.

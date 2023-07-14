@@ -144,7 +144,7 @@ impl Plugin for Aery {
 pub mod prelude {
     pub use super::Var::{self, Wc};
     pub use crate::{
-        commands::RelationCommands,
+        commands::{RelationCommands, Set, Unset},
         events::{TargetEvent, TargetOp},
         operations::{
             AeryQueryExt, ControlFlow, ForEachPermutations, ForEachPermutations3Arity, Join,

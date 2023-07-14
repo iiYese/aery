@@ -77,8 +77,8 @@ pub struct Operations<Control, JoinedTypes = (), JoinedQueries = (), Traversal =
 /// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
 /// trait implementations to build relation operations. This query is called the "control query".
 /// The [`RelationSet`] `R` from this query is what is used for joins and traversals any `T` in a
-/// subsequent `.join::<T>(_)` or `.beadth_first::<T>(_)` call must be present in `R`.
-/// Also see [`Join`] and [`BreadthFirst`].
+/// subsequent `.join::<T>(_)` or `.traverse::<T>(_)` call must be present in `R`.
+/// Also see [`Join`] and [`Traverse`].
 pub trait AeryQueryExt {
     /// Provides read only access to the left portion of the [`Query`] tuple.
     fn ops(&self) -> Operations<&Self>;
@@ -138,19 +138,22 @@ impl<R: Relation> Traversal for BreadthFirstDescent<R> {
     }
 }
 
-/// The traversal functionality of the operations API. Any `T` in `breadth_first::<T>(roots)` must
+/// The traversal functionality of the operations API. Any `T` in `traverse::<T>(roots)` must
 /// be present in the [`RelationSet`] of the control query. Diamonds are impossible with `Exclusive`
-/// relations where the edges face bottom up instead of top down. For this reason bottom up graphs
-/// are the only pattern that is recognized.
+/// relations where the edges face bottom up instead of top down. For this reason all of Aery's
+/// APIs are opinionated with implicit defaults to prefer bottom up edges.
 ///
 /// To descend is to traverse hosts and to ascend is to traverse targets. Descent is breadth first
-/// and since relations support multi arity ascent is also breadth first.
+/// and since relations support multi arity ascent is also breadth first. Ascending exclusive
+/// relations is to ascend parents as the "breadth" is always `1`.
 ///
-/// Uses:
+/// Traversals will not check for cycles or diamonds (possible with multi relations). Cycles will
+/// infinite loop and entities may be traversed multiple times for diamonds.
+///
+/// See [`Join`] for joining queries and:
 /// - [`ForEachPermutations`] for operations with just traversals.
 /// - [`ForEachPermutations3Arity`] for operations with traversals and joins.
 ///
-/// See [`Join`] for joining queries.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -160,21 +163,26 @@ impl<R: Relation> Traversal for BreadthFirstDescent<R> {
 /// struct A;
 ///
 /// #[derive(Relation)]
+/// #[cleanup(policy = "Recursive")]
 /// struct R;
 ///
-/// fn setup(mut commands: Commands) {
-///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| commands.spawn_empty().id());
+/// #[derive(Relation)]
+/// #[cleanup(policy = "Orphan")]
+/// struct O;
 ///
-///     for (from, to) in [
-///         (e1, e0),
-///         (e2, e0),
-///         (e3, e1),
-///         (e4, e1),
-///         (e5, e2),
-///         (e6, e2)
-///     ] {
-///         commands.set::<R>(from, to);
-///     }
+/// fn setup(mut commands: Commands) {
+///     commands.add(|wrld: &mut World| {
+///         wrld.spawn_empty()
+///             .scope::<O>(|parent, ent1| {
+///                 ent1.set::<R>(parent)
+///                     .scope::<O>(|parent, ent3| {})
+///                     .scope::<O>(|parent, ent4| { ent4.set::<R>(parent); });
+///             })
+///             .scope::<O>(|_, ent2| {
+///                 ent2.scope::<R>(|_, ent5| {})
+///                     .scope::<R>(|_, ent6| {});
+///             });
+///     });
 ///
 ///     //  Will construct the following graph:
 ///     //
@@ -188,34 +196,17 @@ impl<R: Relation> Traversal for BreadthFirstDescent<R> {
 /// }
 ///
 /// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
-///     a.ops().breadth_first::<R>(roots.iter()).for_each(|a_ancestor, a| {
+///     a.ops().traverse::<R>(roots.iter()).for_each(|a_ancestor, a| {
 ///         // Will traverse in the following order:
-///         // (a_ancestor, a): (0, 1)
-///         // (a_ancestor, a): (0, 2)
-///         // (a_ancestor, a): (1, 3)
-///         // (a_ancestor, a): (1, 4)
-///         // (a_ancestor, a): (2, 5)
-///         // (a_ancestor, a): (2, 6)
+///         // (a_ancestor, a) == (0, 1)
+///         // (a_ancestor, a) == (0, 2)
+///         // (a_ancestor, a) == (1, 3)
+///         // (a_ancestor, a) == (1, 4)
+///         // (a_ancestor, a) == (2, 5)
+///         // (a_ancestor, a) == (2, 6)
 ///     })
 /// }
 /// ```
-/// What the Archetypes/Tables should look like:
-///
-/// | entityid  | A | `Root<R>` |
-/// |-----------|---|-----------|
-/// | 0         | _ | _         |
-///
-/// *Note:* `Root<_>` markers are automatically added and removed by the provided commands for
-/// convenient traversing.
-///
-/// | entityid  | A | R |
-/// |-----------|---|---|
-/// | 1         | _ | 0 |
-/// | 2         | _ | 0 |
-/// | 3         | _ | 1 |
-/// | 4         | _ | 1 |
-/// | 5         | _ | 2 |
-/// | 6         | _ | 2 |
 pub trait Traverse<E, I>
 where
     E: Borrow<Entity>,
@@ -224,8 +215,8 @@ where
     type Out<T: Relation>;
     type OutDown<T: Relation>;
 
-    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T>;
     fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T>;
+    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T>;
 }
 
 impl<Control, JoinedTypes, JoinedQueries, Traversal, E, I> Traverse<E, I>
@@ -240,16 +231,6 @@ where
     type OutDown<T: Relation> =
         Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, I>;
 
-    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T> {
-        Operations {
-            control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: BreadthFirstAscent::<T>(PhantomData),
-            starts,
-        }
-    }
-
     fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T> {
         Operations {
             control: self.control,
@@ -259,16 +240,26 @@ where
             starts,
         }
     }
+
+    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T> {
+        Operations {
+            control: self.control,
+            joined_types: self.joined_types,
+            joined_queries: self.joined_queries,
+            traversal: BreadthFirstAscent::<T>(PhantomData),
+            starts,
+        }
+    }
 }
 
-/// A trait to implement the `join` functionality of the operations API. Any `T` in
-/// `join::<T>(query)` must be present in the [`RelationSet`] of the control query. The type of
-/// join performed is what's known as an "inner join" which produces permutations of all matched
-/// entiteis.
+/// The `join` functionality of the operations API. Any `T` in `join::<T>(query)` must be present
+/// in the [`RelationSet`] of the control query. The type of join performed is what's known as an
+/// "inner join" which produces permutations of all matched entiteis.
+///
+/// See [`Traverse`] for traversing hierarchies and:
 /// - [`ForEachPermutations`] for operations with just joins.
 /// - [`ForEachPermutations3Arity`] for operations with joins and traversals.
 ///
-/// See [`BreadthFirst`] for traversing hierarchies.
 /// # Illustration:
 /// ```
 /// use bevy::prelude::*;
@@ -383,7 +374,12 @@ where
     }
 }
 
-/// Control flow enum for [`ForEachPermutations`] and [`ForEachPermutations3Arity`].
+/// Control flow enum for [`ForEachPermutations`] and [`ForEachPermutations3Arity`]. The closures
+/// accepted by both return `impl Into<ControlFlow>` with `()` being turned into
+/// `ControlFlow::Continue` to save you from typing `return ControlFlow::Continue` in all your
+/// functions.
+///
+///
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
@@ -411,8 +407,8 @@ where
 ///             return ControlFlow::Exit;
 ///         }
 ///
-///         // `()` impls Into<ControlFlow> for convenience. Return types still need to be the same
-///         // so explicitly providing this is nessecary when doing any controlflow manipulation.
+///         // Return types still need to be the same so explicitly providing this is nessecary
+///         // when doing any controlflow manipulation.
 ///         ControlFlow::Continue
 ///     })
 /// }
@@ -424,6 +420,117 @@ pub enum ControlFlow {
     Exit,
     /// FastForward(n) will advance the nth join to the next match skipping any premutations
     /// inbetween where it currently is and the next permutation where it was supposed to advance.
+    ///
+    /// ## Illustration:
+    /// ```
+    /// use bevy::{prelude::*, app::AppExit};
+    /// use aery::prelude::*;
+    ///
+    /// #[derive(Component)]
+    /// struct A;
+    ///
+    /// #[derive(Component)]
+    /// struct B(usize);
+    ///
+    /// #[derive(Component)]
+    /// struct C(usize);
+    ///
+    /// #[derive(Component)]
+    /// struct D(usize);
+    ///
+    /// #[derive(Relation)]
+    /// struct R0;
+    ///
+    /// #[derive(Relation)]
+    /// struct R1;
+    ///
+    /// #[derive(Relation)]
+    /// struct R2;
+    ///
+    /// fn setup(mut commands: Commands) {
+    ///     let bs = std::array::from_fn::<_, 3, _>(|n| commands.spawn(B(n)).id());
+    ///     let cs = std::array::from_fn::<_, 3, _>(|n| commands.spawn(C(n)).id());
+    ///     let ds = std::array::from_fn::<_, 3, _>(|n| commands.spawn(D(n)).id());
+    ///
+    ///     let a = commands.spawn(A).id();
+    ///
+    ///     for id in bs {
+    ///         commands.add(Set::<R0>::new(a, id));
+    ///     }
+    ///
+    ///     for id in cs {
+    ///         commands.add(Set::<R1>::new(a, id));
+    ///     }
+    ///
+    ///     for id in ds {
+    ///         commands.add(Set::<R2>::new(a, id));
+    ///     }
+    /// }
+    ///
+    /// fn sys(
+    ///     mut exit: EventWriter<AppExit>,
+    ///     a: Query<(&A, Relations<(R0, R1, R2)>)>,
+    ///     b: Query<&B>,
+    ///     c: Query<&C>,
+    ///     d: Query<&D>
+    /// ) {
+    ///     a.ops()
+    ///         .join::<R0>(&b)
+    ///         .join::<R1>(&c)
+    ///         .join::<R2>(&d)
+    ///         .for_each(|a, (b, c, d)| {
+    ///             if c.0 == 1 {
+    ///                 ControlFlow::FastForward(1);
+    ///             }
+    ///             else {
+    ///                 println!("({}, {}, {})", b.0, c.0, d.0)
+    ///                 ControlFlow::Continue;
+    ///             }
+    ///         });
+    ///
+    ///     exit.send(AppExit);
+    /// }
+    ///
+    /// fn main() {
+    ///     App::new()
+    ///         .add_systems(Startup, (setup, apply_deferred, sys).chain())
+    ///         .run()
+    /// }
+    /// ```
+    #[cfg(not(doctest))]
+    /// ## Output:
+    /// ```
+    ///     (0, 0, 0)
+    ///     (0, 0, 1)
+    ///     (0, 0, 2)
+    /// //  Skipped:
+    /// //  (0, 1, 0)
+    /// //  (0, 1, 1)
+    /// //  (0, 1, 2)
+    ///     (0, 2, 0)
+    ///     (0, 2, 1)
+    ///     (0, 2, 2)
+    ///     (1, 0, 0)
+    ///     (1, 0, 1)
+    ///     (1, 0, 2)
+    /// //  Skipped:
+    /// //  (1, 1, 0)
+    /// //  (1, 1, 1)
+    /// //  (1, 1, 2)
+    ///     (1, 2, 0)
+    ///     (1, 2, 1)
+    ///     (1, 2, 2)
+    ///     (2, 0, 0)
+    ///     (2, 0, 1)
+    ///     (2, 0, 2)
+    /// //  Skipped:
+    /// //  (2, 1, 0)
+    /// //  (2, 1, 1)
+    /// //  (2, 1, 2)
+    ///     (2, 2, 0)
+    ///     (2, 2, 1)
+    ///     (2, 2, 2)
+    /// ```
     FastForward(usize),
     /// Walks to the next entity in the traversal skipping any remaining permutations to iterate.
     /// - For beadth first traversals this is the next entity in the walk path.
@@ -440,23 +547,24 @@ impl From<()> for ControlFlow {
     }
 }
 
-/// A for each trait to get around lending Iterators not being expressible with current GATs.
-/// When iterating:
+/// A trait to iterate relation queries. When iterating:
 /// - Diamonds
 /// - Cycles
 /// - Joins where multiple entities have the same target
 ///
 /// References to the same entities components can be produced more than once which is why this
-/// problem cannot be solved with `unsafe`. So to work around this "lifetime trapping" is used
-/// instead. The closure parameters cannot escape the closure.
+/// problem cannot be solved with `unsafe`. It requires lending iterators which are not expressable
+/// with current GATs so to work around this "lifetime trapping" is used instead.
+/// The closure parameters cannot escape the closure.
 ///
 /// For any control query `Query<(X, Relations<..>)>`:
 /// - If there is only joins: Permutations of valid entities from the joined queries will be looped
 /// through. The left parameter will be the `X` item and the right parameter will be a tuple of all
 /// the query fetch parameters from the joined queries.
 /// - If there is only hierarchy traversals: Traversable ancestor-descendant permutations that
-/// belong to the control query will be looped through. The left parameter will be the `X` item of
-/// an ancestor and the right parameter will be the `X` item of an immediate descendant.
+/// belong to the control query will be looped through. For descents the left parameter will be the
+/// `X` item of an ancestor and the right parameter will be the `X` item of an immediate descendant.
+/// For ascents this is the other way around.
 ///
 /// See [`ControlFlow`] for control flow options and [`ForEachPermutations3Arity`] for the loop
 /// behavior of operations with hierarchy traversals and 1 or more join.
@@ -674,11 +782,10 @@ where
 
 /// A 3 arity version of [`ForEachPermutations`] for when operations feature a traversal with 1 or
 /// more joins. Will iterate through hierarchy permutations and join permutations together.
-/// - The left paramater will be an ancestor entity.
-/// - The middle parameter will be a descendant of the ancestor.
-/// - The right parameter will be a tuple of all the query fetch parameters from joined queries
-/// where the entity being joined on is the descendant. The traversal relation is essentially
-/// treated as another join paramter where the query being joined on is the control query.
+/// - The left and middle paramaters will be an ancestor/descendant pairs.
+/// - The rightmost parameter will be a tuple of all the query fetch parameters from joined queries
+/// where the entity being joined on is the same entity that is the middle parameter. This is the
+/// ancestor or descendant depending on if the traversal is an ascent or descent.
 pub trait ForEachPermutations3Arity<const N: usize> {
     type Left<'l>;
     type Middle<'m>;

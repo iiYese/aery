@@ -79,8 +79,8 @@ pub(crate) struct RefragmentHooks {
     hooks: HashMap<RelationId, fn(&mut World, Entity)>,
 }
 
-/// Command to set a relationship target for an entity. If either of the participants do not exist or
-/// the host tries to target itself the operation will be ignored and logged.
+/// Command to set a relationship target for an entity. If either of the participants do not exist
+/// or the host tries to target itself the operation will be ignored and logged.
 pub struct Set<R>
 where
     R: Relation,
@@ -88,6 +88,16 @@ where
     pub host: Entity,
     pub target: Entity,
     pub _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Set<R> {
+    pub fn new(host: Entity, target: Entity) -> Self {
+        Self {
+            host,
+            target,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R> Command for Set<R>
@@ -227,6 +237,16 @@ where
     pub host: Entity,
     pub target: Entity,
     pub _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Unset<R> {
+    pub fn new(host: Entity, target: Entity) -> Self {
+        Self {
+            host,
+            target,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R: Relation> Command for Unset<R> {
