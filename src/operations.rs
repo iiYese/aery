@@ -333,7 +333,7 @@ where
 /// | 8         | `"corge"`     |
 /// | 9         | `"grault"`    |
 ///
-/// **then `a.ops().join::<R0>(&b).join::<R1>(&c).for_each(|a, (b, c)| {})`:**
+/// **then `a.ops().join::<R0>(&b).join::<R1>(&c)`:**
 ///
 /// | a     | b         | c         |
 /// |-------|-----------|-----------|
@@ -420,6 +420,7 @@ pub enum ControlFlow {
     Exit,
     /// FastForward(n) will advance the nth join to the next match skipping any premutations
     /// inbetween where it currently is and the next permutation where it was supposed to advance.
+    /// Has no effect for operations with no joins.
     ///
     /// ## Illustration:
     /// ```
@@ -480,11 +481,11 @@ pub enum ControlFlow {
     ///         .join::<R2>(&d)
     ///         .for_each(|a, (b, c, d)| {
     ///             if c.0 == 1 {
-    ///                 ControlFlow::FastForward(1);
+    ///                 ControlFlow::FastForward(1)
     ///             }
     ///             else {
     ///                 println!("({}, {}, {})", b.0, c.0, d.0)
-    ///                 ControlFlow::Continue;
+    ///                 ControlFlow::Continue
     ///             }
     ///         });
     ///
@@ -533,9 +534,89 @@ pub enum ControlFlow {
     ///     (2, 2, 2)
     /// ```
     FastForward(usize),
-    /// Walks to the next entity in the traversal skipping any remaining permutations to iterate.
-    /// - For beadth first traversals this is the next entity in the walk path.
-    /// - Otherwise it's a linear traversal through the query items and this is the next entity.
+    /// Walks to the next entity in the "traversal" skipping any remaining permutations to iterate.
+    /// - For operations with *traversals* this is the next entity in the traversal path.
+    /// - Otherwise when there are only joins it's a linear traversal through the query items
+    /// and this is just the next entity in the control query.
+    ///
+    /// ## Illustration:
+    /// ```
+    /// use bevy::{prelude::*, app::AppExit};
+    /// use aery::prelude::*;
+    ///
+    /// #[derive(Component)]
+    /// struct A(usize);
+    ///
+    /// #[derive(Component)]
+    /// struct B(usize);
+    ///
+    /// #[derive(Relation)]
+    /// struct R0;
+    ///
+    /// #[derive(Relation)]
+    /// struct R1;
+    ///
+    /// fn setup(mut commands: Commands) {
+    ///     commands.add(|wrld: &mut World| {
+    ///         wrld.spawn(A(0))
+    ///             .scope::<R0>(|_, mut ent1| {
+    ///                 ent1.insert(A(1));
+    ///                 ent1.scope_target::<R1>(|_, mut ent| { ent.insert B(0); })
+    ///                     .scope_target::<R1>(|_, mut ent| { ent.insert B(1); });
+    ///             })
+    ///             .scope::<R0>(|_, mut ent2| {
+    ///                 ent2.insert(A(2));
+    ///                 ent2.scope_target::<R1>(|_, mut ent| { ent.insert B(3); })
+    ///                     .scope_target::<R1>(|_, mut ent| { ent.insert B(4); });
+    ///             })
+    ///             .scope::<R0>(|_, mut ent3| {
+    ///                 ent3.insert(A(3));
+    ///                 ent3.scope_target::<R1>(|_, mut ent| { ent.insert B(5); })
+    ///                     .scope_target::<R1>(|_, mut ent| { ent.insert B(6); });
+    ///             })
+    ///     });
+    /// }
+    ///
+    /// fn sys(
+    ///     mut exit: EventWriter<AppExit>,
+    ///     roots: Query<Entity, Root<R0>>
+    ///     a: Query<(&A, Relations<(R0, R1)>)>,
+    ///     b: Query<&B>,
+    /// ) {
+    ///     a.ops()
+    ///         .join::<R1>(&b)
+    ///         .traverse::<R0>(roots.iter())
+    ///         .for_each(|a, a_child, b| {
+    ///             if a_child.0 == 2 {
+    ///                 ControlFlow::Walk
+    ///             }
+    ///             else {
+    ///                 println!("({}, {}, {})", a.0, a_child.0, b.0)
+    ///                 ControlFlow::Continue
+    ///             }
+    ///         });
+    ///
+    ///     exit.send(AppExit);
+    /// }
+    ///
+    /// fn main() {
+    ///     App::new()
+    ///         .add_systems(Startup, setup)
+    ///         .add_systems(Update, sys)
+    ///         .run()
+    /// }
+    /// ```
+    #[cfg(not(doctest))]
+    /// ## Output:
+    /// ```
+    ///     (0, 1, 0)
+    ///     (0, 1, 1)
+    /// //  Skipped:
+    /// //  (0, 2, 3)
+    /// //  (0, 2, 4)
+    ///     (0, 3, 5)
+    ///     (0, 3, 6)
+    /// ```
     Walk,
     /// Immediately probe a traversal. Skips any remaining permutations and the remaining walk
     /// path.
