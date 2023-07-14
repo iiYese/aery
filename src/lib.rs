@@ -16,6 +16,7 @@
 //!   - Spawning
 //!
 //! # API tour:
+//! Non exhaustive. Covers most common parts.
 //! ```
 //! use bevy::prelude::*;
 //! use aery::prelude::*;
@@ -42,29 +43,40 @@
 //! #[multi]
 //! struct Bag;
 //!
+//! // Spawning entities with relations
 //! fn setup(mut commands: Commands) {
 //!     // A hierarchy of Foos with (chocolate? OwO) Bars in their Bags
 //!     commands.add(|wrld: &mut World| {
 //!         wrld.spawn(Foo)
 //!             .scope::<ChildOf>(|_, mut child| {
 //!                 child.insert(Foo);
-//!                 child.scope_tgt::<Bag>(|_, mut bag| { bag.insert(Bar); });
+//!                 child.scope_target::<Bag>(|_, mut bag| { bag.insert(Bar); });
 //!             })
 //!             .scope::<ChildOf>(|_, mut child| {
 //!                 child.insert(Foo);
-//!                 child.scope_tgt::<Bag>(|_, mut bag| { bag.insert(Bar); });
+//!                 child.scope_target::<Bag>(|_, mut bag| { bag.insert(Bar); });
 //!             });
 //!     })
 //! }
 //!
+//! // Listening for relation events
+//! fn alert(mut events: EventReader<TargetEvent>) {
+//!     for event in events.iter() {
+//!         if event.matches(Wc, TargetOp::Set, ChildOf, Wc) {
+//!             println!("{:?} was added as a child of {:?}", event.host, event.target);
+//!         }
+//!     }
+//! }
+//!
+//! // Relation Queries
 //! fn sys(
-//!     foos: Query<(&Foo, Relations<(Bag, Child)>)>,
-//!     roots: Query<Entity, Root<Child>>
+//!     foos: Query<(&Foo, Relations<(Bag, ChildOf)>)>,
+//!     roots: Query<Entity, Root<ChildOf>>,
 //!     bars: Query<&Bar>,
 //! ) {
 //!     foos.ops()
 //!         .join::<Bag>(&bars)
-//!         .traverse::<Child>(roots.iter())
+//!         .traverse::<ChildOf>(roots.iter())
 //!         .for_each(|foo_parent, foo, bar| {
 //!             // ..
 //!         })
@@ -133,7 +145,7 @@ pub mod prelude {
     pub use super::Var::{self, Wc};
     pub use crate::{
         commands::RelationCommands,
-        events::{TargetEvent, TgtOp},
+        events::{TargetEvent, TargetOp},
         operations::{
             AeryQueryExt, ControlFlow, ForEachPermutations, ForEachPermutations3Arity, Join,
             Relations, Traverse,

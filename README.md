@@ -14,6 +14,9 @@ ZST relations.
   - Traversing
   - Spawning
 
+### API tour:
+Non exhaustive. Covers most common parts.
+
 ```rust
 use bevy::prelude::*;
 use aery::prelude::*;
@@ -34,35 +37,46 @@ struct Bar;
 
 #[derive(Relation)]
 #[cleanup(policy = "Recursive")]
-struct Child;
+struct ChildOf;
 
 #[derive(Relation)]
 #[multi]
 struct Bag;
 
+// Spawning entities with relations
 fn setup(mut commands: Commands) {
     // A hierarchy of Foos with (chocolate? OwO) Bars in their Bags
     commands.add(|wrld: &mut World| {
         wrld.spawn(Foo)
-            .scope_down::<Child>(|mut child| {
+            .scope::<ChildOf>(|_, mut child| {
                 child.insert(Foo);
-                child.scope::<Bag>(|mut bag| { bag.insert(Bar); });
+                child.scope_target::<Bag>(|_, mut bag| { bag.insert(Bar); });
             })
-            .scope_down::<Child>(|mut child| {
+            .scope::<ChildOf>(|_, mut child| {
                 child.insert(Foo);
-                child.scope::<Bag>(|mut bag| { bag.insert(Bar); });
+                child.scope_target::<Bag>(|_, mut bag| { bag.insert(Bar); });
             });
     })
 }
 
+// Listening for relation events
+fn alert(mut events: EventReader<TargetEvent>) {
+    for event in events.iter() {
+        if event.matches(Wc, TargetOp::Set, ChildOf, Wc) {
+            println!("{:?} was added as a child of {:?}", event.host, event.target);
+        }
+    }
+}
+
+// Relation Queries
 fn sys(
-    foos: Query<(&Foo, Relations<(Bag, Child)>)>,
-    roots: Query<Entity, Root<Child>>,
+    foos: Query<(&Foo, Relations<(Bag, ChildOf)>)>,
+    roots: Query<Entity, Root<ChildOf>>,
     bars: Query<&Bar>,
 ) {
     foos.ops()
         .join::<Bag>(&bars)
-        .breadth_first::<Child>(roots.iter())
+        .traverse::<ChildOf>(roots.iter())
         .for_each(|foo_parent, foo, bar| {
             // ..
         })

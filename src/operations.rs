@@ -224,7 +224,7 @@ where
     type Out<T: Relation>;
     type OutDown<T: Relation>;
 
-    fn traverse_up<T: Relation>(self, starts: I) -> Self::Out<T>;
+    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T>;
     fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T>;
 }
 
@@ -240,7 +240,7 @@ where
     type OutDown<T: Relation> =
         Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, I>;
 
-    fn traverse_up<T: Relation>(self, starts: I) -> Self::Out<T> {
+    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
@@ -726,19 +726,19 @@ where
             .collect::<VecDeque<Entity>>();
 
         'queue: while let Some(entity) = queue.pop_front() {
-            let Ok((mut prev_components, prev_edges)) = self.control.get(entity) else {
+            let Ok((mut left_components, left_edges)) = self.control.get(entity) else {
                 continue
             };
 
-            for curr in T::iter(&prev_edges.edges) {
-                let Ok((mut curr_components, curr_edges)) = self
+            for mid in T::iter(&left_edges.edges) {
+                let Ok((mut mid_components, mid_edges)) = self
                     .control
-                    .get(curr)
+                    .get(mid)
                 else {
                     continue
                 };
 
-                let mut edge_product = JoinedTypes::product(curr_edges.edges);
+                let mut edge_product = JoinedTypes::product(mid_edges.edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -749,8 +749,8 @@ where
                     }
 
                     match func(
-                        &mut prev_components,
-                        &mut curr_components,
+                        &mut left_components,
+                        &mut mid_components,
                         Joinable::join(&mut self.joined_queries, entities),
                     )
                     .into()
@@ -763,7 +763,7 @@ where
                         }
                         ControlFlow::Probe => {
                             queue.clear();
-                            queue.push_back(curr);
+                            queue.push_back(mid);
                             continue 'queue;
                         }
                         _ => {}
@@ -771,7 +771,7 @@ where
                 }
             }
 
-            for e in T::iter(&prev_edges.edges) {
+            for e in T::iter(&left_edges.edges) {
                 queue.push_back(e);
             }
         }
@@ -811,21 +811,21 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((mut prev_components, prev_edges)) = (unsafe {
+            let Ok((mut left_components, left_edges)) = (unsafe {
                 self.control.get_unchecked(entity)
             }) else {
                 continue
             };
 
-            for curr in T::iter(&prev_edges.edges) {
+            for mid in T::iter(&left_edges.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
-                let Ok((mut curr_components, curr_edges)) = (unsafe {
-                    self.control.get_unchecked(curr)
+                let Ok((mut mid_components, mid_edges)) = (unsafe {
+                    self.control.get_unchecked(mid)
                 }) else {
                     continue
                 };
 
-                let mut edge_product = JoinedTypes::product(curr_edges.edges);
+                let mut edge_product = JoinedTypes::product(mid_edges.edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -836,8 +836,8 @@ where
                     }
 
                     match func(
-                        &mut prev_components,
-                        &mut curr_components,
+                        &mut left_components,
+                        &mut mid_components,
                         Joinable::join(&mut self.joined_queries, entities),
                     )
                     .into()
@@ -850,7 +850,7 @@ where
                         }
                         ControlFlow::Probe => {
                             queue.clear();
-                            queue.push_back(curr);
+                            queue.push_back(mid);
                             continue 'queue;
                         }
                         _ => {}
@@ -858,7 +858,7 @@ where
                 }
             }
 
-            for e in T::iter(&prev_edges.edges) {
+            for e in T::iter(&left_edges.edges) {
                 queue.push_back(e);
             }
         }

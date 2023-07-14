@@ -15,3 +15,4 @@ readme = "README.md"
 bevy = "0.11"
 indexmap = "1.9.3"
 aery_macros = { path = "macros", version = "0.2.0-dev" }
+aquamarine = "0.3.2"

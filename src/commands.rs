@@ -1,5 +1,5 @@
 use crate::{
-    events::{CleanupEvent, TargetEvent, TgtOp},
+    events::{CleanupEvent, TargetEvent, TargetOp},
     relation::{CleanupPolicy, Edges, Participant, Relation, RelationId, RootMarker, ZstOrPanic},
 };
 
@@ -188,7 +188,7 @@ where
 
         world.send_event(TargetEvent {
             host: self.host,
-            target_op: TgtOp::Set,
+            target_op: TargetOp::Set,
             target: self.target,
             relation_id: RelationId::of::<R>(),
         });
@@ -323,7 +323,7 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
 
         world.send_event(TargetEvent {
             host: self.host,
-            target_op: TgtOp::Unset,
+            target_op: TargetOp::Unset,
             target: self.target,
             relation_id: RelationId::of::<R>(),
         });

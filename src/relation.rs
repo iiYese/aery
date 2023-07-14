@@ -72,7 +72,9 @@ pub struct Participates<R: Relation> {
 /// struct R;
 ///
 /// fn sys(wrld: &mut World) {
-///     wrld.spawn_empty()
+///     // Creation
+///     let root = wrld
+///         .spawn_empty()
 ///         .scope::<O>(|parent, ent1| {
 ///             ent1.set::<R>(parent)
 ///                 .scope::<O>(|parent, ent3| {})
@@ -81,27 +83,39 @@ pub struct Participates<R: Relation> {
 ///         .scope::<O>(|_, ent2| {
 ///             ent2.scope::<R>(|_, ent5| {})
 ///                 .scope::<R>(|_, ent6| {});
-///         })
-///         // Results in:
-///         //            E0
-///         //           // \
-///         //          //   \
-///         //         R,O    O
-///         //        //       \
-///         //       //         \
-///         //      E1           E2
-///         //     / \\         / \
-///         //    O   R,O      R   R
-///         //   /     \\     /     \
-///         //  E3      E4   E5      E6
-///         .checked_despawn();
-///         // After cleanup:
-///         //                   E2
-///         //                  / \
-///         //      E3         R   R
-///         //                /     \
-///         //               E5      E6
+///         });
+///     // Trigger cleanup
+///     root.checked_despawn();
 /// }
+/// ```
+/// ## After creation before cleanup:
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart BT
+/// E1 ---> |R| E0
+/// E1 ---> |O| E0
+///
+/// E2 ---> |O| E0
+///
+/// E3 ---> |O| E1
+///
+/// E4 ---> |R| E1
+/// E4 ---> |O| E1
+///
+/// E5 ---> |R| E2
+///
+/// E6 ---> |R| E2
+/// ```
+///
+/// ## After cleanup:
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart BT
+/// E3
+///
+/// E5 ---> |R| E2
+///
+/// E6 ---> |R| E2
 /// ```
 #[derive(Clone, Copy)]
 pub enum CleanupPolicy {

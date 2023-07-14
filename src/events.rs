@@ -4,13 +4,13 @@ use bevy::ecs::{entity::Entity, event::Event};
 use std::cmp::PartialEq;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TgtOp {
+pub enum TargetOp {
     Set,
     Unset,
 }
 
-impl From<TgtOp> for Var<TgtOp> {
-    fn from(op: TgtOp) -> Self {
+impl From<TargetOp> for Var<TargetOp> {
+    fn from(op: TargetOp) -> Self {
         Self::Val(op)
     }
 }
@@ -20,7 +20,7 @@ impl From<TgtOp> for Var<TgtOp> {
 pub struct TargetEvent {
     pub host: Entity,
     pub target: Entity,
-    pub target_op: TgtOp,
+    pub target_op: TargetOp,
     pub relation_id: RelationId,
 }
 
@@ -40,16 +40,16 @@ impl TargetEvent {
     /// struct R;
     ///
     /// fn sys(
-    ///     mut evr: EventReader<TargetEvent>,
+    ///     mut events: EventReader<TargetEvent>,
     ///     a: Query<(Entity, &A)>,
     ///     b: Query<(Entity, &B)>,
     /// ) {
     ///     let (foo, _) = a.single();
     ///     let (bar, _) = b.single();
     ///
-    ///     for event in evr.iter() {
+    ///     for event in events.iter() {
     ///         // Anything Set anything to anything else
-    ///         if event.matches(Wc, TgtOp::Set, Wc, Wc) {
+    ///         if event.matches(Wc, TargetOp::Set, Wc, Wc) {
     ///             if let Ok(a) = a.get(event.host) {
     ///                 // Do something if it was a host with an `A` component
     ///             }
@@ -60,17 +60,17 @@ impl TargetEvent {
     ///         }
     ///
     ///         // foo Set an `R` to bar
-    ///         if event.matches(foo, TgtOp::Set, R, bar) {
+    ///         if event.matches(foo, TargetOp::Set, R, bar) {
     ///             // ..
     ///         }
     ///
     ///         // foo Set an `R` to something
-    ///         if event.matches(foo, TgtOp::Set, R, Wc) {
+    ///         if event.matches(foo, TargetOp::Set, R, Wc) {
     ///             // ..
     ///         }
     ///
     ///         // foo Set something to something
-    ///         if event.matches(foo, TgtOp::Set, Wc, Wc) {
+    ///         if event.matches(foo, TargetOp::Set, Wc, Wc) {
     ///             // ..
     ///         }
     ///
@@ -89,7 +89,7 @@ impl TargetEvent {
     pub fn matches(
         self,
         host: impl Into<Var<Entity>>,
-        target_op: impl Into<Var<TgtOp>>,
+        target_op: impl Into<Var<TargetOp>>,
         rel_var: impl Into<Var<RelationId>>,
         target: impl Into<Var<Entity>>,
     ) -> bool {

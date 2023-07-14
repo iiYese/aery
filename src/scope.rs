@@ -30,7 +30,7 @@ pub trait Scope<'a>: Sized {
 
     /// Spawns a target and gives mutable access to it via `EntityMut<'_>`.
     /// Hierarchies are bottom up so the target is also the ancestor.
-    fn scope_tgt<R: Relation>(
+    fn scope_target<R: Relation>(
         self,
         func: impl FnMut(Entity, EntityMut<'_>),
     ) -> Option<EntityMut<'a>>;
@@ -38,7 +38,7 @@ pub trait Scope<'a>: Sized {
     /// Tries to scope an existing entity as a host. Gives mutable access via `EntityMut<'_>`.
     /// A warning is emitted when the entity doesn't exist.
     /// Hierarchies are bottom up so the host is also the descendant.
-    fn scope_ent<R: Relation>(
+    fn scope_entity<R: Relation>(
         self,
         entity: Entity,
         func: impl FnMut(EntityMut<'_>),
@@ -47,7 +47,7 @@ pub trait Scope<'a>: Sized {
     /// Tries to scope an existing entity as a target. Gives mutable access via `EntityMut<'_>`.
     /// A warning is emitted when the entity doesn't exist.
     /// Hierarchies are bottom up so the target is also the ancestor.
-    fn scope_tgt_ent<R: Relation>(
+    fn scope_target_entity<R: Relation>(
         self,
         entity: Entity,
         func: impl FnMut(EntityMut<'_>),
@@ -69,7 +69,10 @@ impl<'a> Scope<'a> for EntityMut<'a> {
         world.get_entity_mut(target)
     }
 
-    fn scope_tgt<R: Relation>(self, mut func: impl FnMut(Entity, EntityMut<'_>)) -> Option<Self> {
+    fn scope_target<R: Relation>(
+        self,
+        mut func: impl FnMut(Entity, EntityMut<'_>),
+    ) -> Option<Self> {
         let _ = R::ZST_OR_PANIC;
 
         let host = self.id();
@@ -92,7 +95,7 @@ impl<'a> Scope<'a> for EntityMut<'a> {
         world.get_entity_mut(host)
     }
 
-    fn scope_tgt_ent<R: Relation>(
+    fn scope_target_entity<R: Relation>(
         self,
         entity: Entity,
         mut func: impl FnMut(EntityMut<'_>),
@@ -123,7 +126,7 @@ impl<'a> Scope<'a> for EntityMut<'a> {
         world.get_entity_mut(host)
     }
 
-    fn scope_ent<R: Relation>(
+    fn scope_entity<R: Relation>(
         self,
         entity: Entity,
         mut func: impl FnMut(EntityMut<'_>),
@@ -150,9 +153,9 @@ impl<'a> Scope<'a> for EntityMut<'a> {
 }
 
 impl<'a> Scope<'a> for Option<EntityMut<'a>> {
-    fn scope_tgt<R: Relation>(self, func: impl FnMut(Entity, EntityMut<'_>)) -> Self {
+    fn scope_target<R: Relation>(self, func: impl FnMut(Entity, EntityMut<'_>)) -> Self {
         match self {
-            Some(entity_mut) => entity_mut.scope_tgt::<R>(func),
+            Some(entity_mut) => entity_mut.scope_target::<R>(func),
             None => {
                 warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
                 None
@@ -170,9 +173,13 @@ impl<'a> Scope<'a> for Option<EntityMut<'a>> {
         }
     }
 
-    fn scope_tgt_ent<R: Relation>(self, entity: Entity, func: impl FnMut(EntityMut<'_>)) -> Self {
+    fn scope_target_entity<R: Relation>(
+        self,
+        entity: Entity,
+        func: impl FnMut(EntityMut<'_>),
+    ) -> Self {
         match self {
-            Some(entity_mut) => entity_mut.scope_tgt_ent::<R>(entity, func),
+            Some(entity_mut) => entity_mut.scope_target_entity::<R>(entity, func),
             None => {
                 warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
                 None
@@ -180,9 +187,9 @@ impl<'a> Scope<'a> for Option<EntityMut<'a>> {
         }
     }
 
-    fn scope_ent<R: Relation>(self, entity: Entity, func: impl FnMut(EntityMut<'_>)) -> Self {
+    fn scope_entity<R: Relation>(self, entity: Entity, func: impl FnMut(EntityMut<'_>)) -> Self {
         match self {
-            Some(entity_mut) => entity_mut.scope_ent::<R>(entity, func),
+            Some(entity_mut) => entity_mut.scope_entity::<R>(entity, func),
             None => {
                 warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
                 None
