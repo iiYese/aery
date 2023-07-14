@@ -152,6 +152,21 @@ where
     }
 }
 
+impl<'a, P0> Joinable<'a, 1> for (P0,)
+where
+    P0: Sealed + Joinable<'a, 1>,
+{
+    type Out = <P0 as Joinable<'a, 1>>::Out;
+
+    fn check((p0,): &Self, [e0]: [Entity; 1]) -> [bool; 1] {
+        Joinable::check(p0, [e0])
+    }
+
+    fn join((p0,): &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
+        Joinable::join(p0, [e0])
+    }
+}
+
 macro_rules! impl_joinable {
     ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
         impl<'a, $($P),*> Joinable<'a, { count!($($P )*) }> for ($($P,)*)
@@ -183,4 +198,4 @@ macro_rules! impl_joinable {
     }
 }
 
-all_tuples!(impl_joinable, 1, 15, P, p, e, v);
+all_tuples!(impl_joinable, 2, 15, P, p, e, v);
