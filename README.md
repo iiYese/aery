@@ -25,7 +25,7 @@ fn main() {
     App::new()
         .add_plugins(Aery)
         .add_systems(Startup, setup)
-        .add_systems(Update, sys)
+        .add_systems(Update, (alert, sys))
         .run();
 }
 
