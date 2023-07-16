@@ -102,16 +102,16 @@ pub struct Operations<
     JoinedQueries = (),
     Traversal = (),
     Starts = (),
+    Init = (),
     Fold = (),
-    Acc = (),
 > {
     control: Control,
     joined_types: PhantomData<JoinedTypes>,
     joined_queries: JoinedQueries,
     traversal: Traversal,
     starts: Starts,
+    init: Init,
     fold: Fold,
-    init: Acc,
 }
 
 /// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
@@ -142,8 +142,8 @@ where
             joined_queries: (),
             traversal: (),
             starts: (),
-            fold: (),
             init: (),
+            fold: (),
         }
     }
 
@@ -157,8 +157,8 @@ where
             joined_queries: (),
             traversal: (),
             starts: (),
-            fold: (),
             init: (),
+            fold: (),
         }
     }
 }
@@ -263,51 +263,51 @@ where
     fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T>;
 }
 
-impl<Control, JoinedTypes, JoinedQueries, E, I, Fold, Acc> Traverse<E, I>
-    for Operations<Control, JoinedTypes, JoinedQueries, (), (), Fold, Acc>
+impl<Control, JoinedTypes, JoinedQueries, E, Starts, Init, Fold> Traverse<E, Starts>
+    for Operations<Control, JoinedTypes, JoinedQueries, (), (), Init, Fold>
 where
     E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
+    Starts: IntoIterator<Item = E>,
 {
     type Out<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstAscent<T>, I>;
+        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstAscent<T>, Starts, Init, Fold>;
 
     type OutDown<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, I>;
+        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, Starts, Init, Fold>;
 
-    fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T> {
+    fn traverse<T: Relation>(self, starts: Starts) -> Self::OutDown<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: BreadthFirstDescent::<T>(PhantomData),
+            init: self.init,
+            fold: self.fold,
             starts,
-            fold: (),
-            init: (),
         }
     }
 
-    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T> {
+    fn traverse_targets<T: Relation>(self, starts: Starts) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: BreadthFirstAscent::<T>(PhantomData),
+            init: self.init,
+            fold: self.fold,
             starts,
-            fold: (),
-            init: (),
         }
     }
 }
 
 pub trait FoldBreadth {
     type In<'i>;
-    type Out<Acc, Func>;
+    type Out<Init, Fold>;
 
-    fn fold_breadth<Acc, E, Func>(self, init: Acc, func: Func) -> Self::Out<Acc, Func>
+    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
-        Acc: Clone,
-        Func: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>;
+        Init: FnMut(&mut Self::In<'_>) -> Acc,
+        Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>;
 }
 
 impl<'a, 'w, 's, Q, R, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
@@ -324,20 +324,20 @@ where
     F: ReadOnlyWorldQuery,
 {
     type In<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
-    type Out<Acc, Func> = Operations<
+    type Out<Init, Fold> = Operations<
         &'a Query<'w, 's, (Q, Relations<R>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
         Starts,
-        Func,
-        Acc,
+        Init,
+        Fold,
     >;
 
-    fn fold_breadth<Acc, E, Func>(self, init: Acc, func: Func) -> Self::Out<Acc, Func>
+    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
-        Acc: Clone,
-        Func: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>,
+        Init: FnMut(&mut Self::In<'_>) -> Acc,
+        Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>,
     {
         Operations {
             control: self.control,
@@ -345,8 +345,8 @@ where
             joined_queries: self.joined_queries,
             traversal: self.traversal,
             starts: self.starts,
-            fold: func,
             init,
+            fold,
         }
     }
 }
@@ -365,20 +365,20 @@ where
     F: ReadOnlyWorldQuery,
 {
     type In<'i> = <Q as WorldQuery>::Item<'i>;
-    type Out<Acc, Func> = Operations<
+    type Out<Init, Fold> = Operations<
         &'a Query<'w, 's, (Q, Relations<R>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
         Starts,
-        Func,
-        Acc,
+        Init,
+        Fold,
     >;
 
-    fn fold_breadth<Acc, E, Func>(self, init: Acc, func: Func) -> Self::Out<Acc, Func>
+    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
-        Acc: Clone,
-        Func: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>,
+        Init: FnMut(&mut Self::In<'_>) -> Acc,
+        Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>,
     {
         Operations {
             control: self.control,
@@ -386,8 +386,8 @@ where
             joined_queries: self.joined_queries,
             traversal: self.traversal,
             starts: self.starts,
-            fold: func,
             init,
+            fold,
         }
     }
 }
@@ -1073,8 +1073,8 @@ where
     }
 }
 
-impl<Q, R, F, T, E, I, Fold, Acc, Err> ForEachPermutations<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Fold, Acc>
+impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations<0>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
 where
     Q: WorldQuery,
     R: RelationSet,
@@ -1082,7 +1082,7 @@ where
     T: Traversal,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
-    Acc: Clone,
+    Init: for<'a> FnMut(&mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>) -> Acc,
     Fold: for<'a> FnMut(
         Acc,
         <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>,
@@ -1106,11 +1106,11 @@ where
             .collect::<VecDeque<Entity>>();
 
         'queue: while let Some(entity) = queue.pop_front() {
-            let Ok((control, relations)) = self.control.get(entity) else {
+            let Ok((mut control, relations)) = self.control.get(entity) else {
                 continue
             };
 
-            let mut acc = Ok::<_, Err>(self.init.clone());
+            let mut acc = Ok::<_, Err>((self.init)(&mut control));
 
             for e in T::iter(&relations.edges) {
                 let Ok(traversal_item) = self.control.get(e) else {
@@ -1149,8 +1149,8 @@ where
     }
 }
 
-impl<Q, R, F, T, E, I, Fold, Acc, Err> ForEachPermutations<0>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Fold, Acc>
+impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations<0>
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
 where
     Q: WorldQuery,
     R: RelationSet,
@@ -1158,7 +1158,7 @@ where
     T: Traversal,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
-    Acc: Clone,
+    Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>) -> Acc,
     Fold: for<'a> FnMut(Acc, <Q as WorldQuery>::Item<'a>) -> Result<Acc, Err>,
 {
     type Left<'l> = (<Q as WorldQuery>::Item<'l>, Result<Acc, Err>);
@@ -1177,13 +1177,13 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((control, relations)) = (unsafe {
+            let Ok((mut control, relations)) = (unsafe {
                 self.control.get_unchecked(entity)
             }) else {
                 continue
             };
 
-            let mut acc = Ok::<_, Err>(self.init.clone());
+            let mut acc = Ok::<_, Err>((self.init)(&mut control));
 
             for e in T::iter(&relations.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
