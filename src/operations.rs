@@ -1083,7 +1083,10 @@ where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     Acc: Clone,
-    Fold: for<'a> FnMut(<<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>) -> Result<Acc, Err>,
+    Fold: for<'a> FnMut(
+        Acc,
+        <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>,
+    ) -> Result<Acc, Err>,
 {
     type Left<'l> = (
         <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'l>,
@@ -1110,15 +1113,15 @@ where
             let mut acc = Ok::<_, Err>(self.init.clone());
 
             for e in T::iter(&relations.edges) {
-                if acc.is_err() {
-                    break;
-                };
-
                 let Ok(traversal_item) = self.control.get(e) else {
                     continue
                 };
 
-                acc = (self.fold)(traversal_item.0);
+                let Ok(acc_ok) = acc else {
+                    break;
+                };
+
+                acc = (self.fold)(acc_ok, traversal_item.0);
             }
 
             let mut left = (control, acc);
@@ -1156,7 +1159,7 @@ where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     Acc: Clone,
-    Fold: for<'a> FnMut(<Q as WorldQuery>::Item<'a>) -> Result<Acc, Err>,
+    Fold: for<'a> FnMut(Acc, <Q as WorldQuery>::Item<'a>) -> Result<Acc, Err>,
 {
     type Left<'l> = (<Q as WorldQuery>::Item<'l>, Result<Acc, Err>);
     type Right<'r> = <Q as WorldQuery>::Item<'r>;
@@ -1183,16 +1186,16 @@ where
             let mut acc = Ok::<_, Err>(self.init.clone());
 
             for e in T::iter(&relations.edges) {
-                if acc.is_err() {
-                    break;
-                };
-
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(traversal_item) = (unsafe { self.control.get_unchecked(e) }) else {
                     continue
                 };
 
-                acc = (self.fold)(traversal_item.0);
+                let Ok(acc_ok) = acc else {
+                    break;
+                };
+
+                acc = (self.fold)(acc_ok, traversal_item.0);
             }
 
             let mut left = (control, acc);
