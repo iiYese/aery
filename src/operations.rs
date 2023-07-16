@@ -1,5 +1,5 @@
 use crate::{
-    relation::{EdgeWQ, EdgeWQItem, Relation, ZstOrPanic},
+    relation::{CheckRelations, EdgeWQ, EdgeWQItem, Relation, ZstOrPanic},
     tuple_traits::*,
 };
 use bevy::ecs::{
@@ -63,6 +63,36 @@ pub struct Relations<R: RelationSet> {
     pub(crate) edges: EdgeWQ,
     _filters: R::Filters,
     _phantom: PhantomData<R>,
+}
+
+impl<RS: RelationSet> RelationsItem<'_, RS> {
+    pub fn iter_hosts<R: Relation>(&self) -> EdgeIter<'_> {
+        let _ = R::ZST_OR_PANIC;
+        self.edges.edges.iter_hosts::<R>()
+    }
+
+    pub fn iter_targets<R: Relation>(&self) -> EdgeIter<'_> {
+        let _ = R::ZST_OR_PANIC;
+        self.edges.edges.iter_targets::<R>()
+    }
+}
+
+impl<R: RelationSet> CheckRelations for RelationsItem<'_, R> {
+    fn has_host(
+        &self,
+        relation: impl Into<crate::Var<crate::relation::RelationId>>,
+        host: impl Into<crate::Var<Entity>>,
+    ) -> bool {
+        self.edges.edges.has_host(relation, host)
+    }
+
+    fn has_target(
+        &self,
+        relation: impl Into<crate::Var<crate::relation::RelationId>>,
+        target: impl Into<crate::Var<Entity>>,
+    ) -> bool {
+        self.edges.edges.has_target(relation, target)
+    }
 }
 
 /// Struct that is used to track metadata for relation operations.
@@ -219,8 +249,8 @@ where
     fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T>;
 }
 
-impl<Control, JoinedTypes, JoinedQueries, Traversal, E, I> Traverse<E, I>
-    for Operations<Control, JoinedTypes, JoinedQueries, Traversal>
+impl<Control, JoinedTypes, JoinedQueries, E, I> Traverse<E, I>
+    for Operations<Control, JoinedTypes, JoinedQueries>
 where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,

@@ -106,6 +106,12 @@ pub enum Var<T> {
     Wc,
 }
 
+impl<T> Default for Var<T> {
+    fn default() -> Self {
+        Self::Wc
+    }
+}
+
 impl<T: PartialEq> PartialEq<T> for Var<T> {
     fn eq(&self, other: &T) -> bool {
         match self {
