@@ -366,7 +366,7 @@ where
 {
     type In<'i> = <Q as WorldQuery>::Item<'i>;
     type Out<Init, Fold> = Operations<
-        &'a Query<'w, 's, (Q, Relations<R>), F>,
+        &'a mut Query<'w, 's, (Q, Relations<R>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
