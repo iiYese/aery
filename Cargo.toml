@@ -16,3 +16,17 @@ bevy = "0.11"
 indexmap = "1.9.3"
 aery_macros = { path = "macros", version = "0.2.0-dev" }
 aquamarine = "0.3.2"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "tree"
+harness = false
+
+[[bench]]
+name = "flecs"
+harness = false
