@@ -13,7 +13,6 @@ use bevy::{
     utils::{HashMap, HashSet},
 };
 
-use indexmap::IndexSet;
 use std::{collections::VecDeque, marker::PhantomData};
 
 pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
@@ -22,29 +21,19 @@ pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
     };
 
     let (has_hosts, has_targets) = (
-        edges.hosts[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map(|hosts| !hosts.is_empty())
-            .unwrap_or(false),
-        edges.targets[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map(|targets| !targets.is_empty())
-            .unwrap_or(false),
+        edges.has_hosts::<R>(),
+        edges.has_targets::<R>(),
     );
 
     if !has_hosts {
-        edges.hosts[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
+        edges.remove_hosts::<R>()
     }
 
     if !has_targets {
-        edges.targets[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
+        edges.remove_targets::<R>()
     }
 
-    if edges
-        .targets
-        .iter()
-        .chain(edges.hosts.iter())
-        .all(HashMap::is_empty)
+    if edges.is_empty()
     {
         world.entity_mut(entity).remove::<Edges>();
     }
@@ -153,18 +142,12 @@ where
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
 
-        target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .or_default()
-            .insert(self.host);
+        target_edges.insert_host::<R>(self.host);
 
         let symmetric_set = R::SYMMETRIC
-            && !target_edges.targets[R::CLEANUP_POLICY as usize]
-                .entry(RelationId::of::<R>())
-                .or_default()
-                .contains(&self.host);
+            && !target_edges.has_policy_target::<R>(self.host);
 
-        if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&RelationId::of::<R>()) {
+        if !target_edges.has_targets::<R>() {
             world.entity_mut(self.target).insert(RootMarker::<R> {
                 _phantom: PhantomData,
             });
@@ -179,15 +162,9 @@ where
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
 
-        let old = host_edges.targets[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .and_then(|targets| targets.first())
-            .copied();
+        let old = host_edges.get_first_target::<R>();
 
-        host_edges.targets[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .or_default()
-            .insert(self.target);
+        host_edges.insert_target::<R>(self.target);
 
         world.entity_mut(self.host).insert((
             host_edges,
@@ -308,21 +285,11 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             return
         };
 
-        host_edges.targets[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .and_modify(|hosts| {
-                hosts.remove(&self.target);
-            });
+        host_edges.remove_target::<R>(self.target);
 
-        target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .and_modify(|hosts| {
-                hosts.remove(&self.host);
-            });
+        target_edges.remove_host::<R>(self.host);
 
-        let target_orphaned = target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map_or(false, IndexSet::is_empty);
+        let target_orphaned = !target_edges.has_hosts::<R>();
 
         world.entity_mut(self.host).insert(host_edges);
         world.entity_mut(self.target).insert(target_edges);
@@ -367,9 +334,7 @@ impl<R: Relation> Command for UnsetAll<R> {
     fn apply(self, world: &mut World) {
         while let Some(target) = world
             .get::<Edges>(self.entity)
-            .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&RelationId::of::<R>()))
-            .and_then(|targets| targets.first())
-            .copied()
+            .and_then(|edges| edges.get_first_target::<R>())
         {
             let _ = R::ZST_OR_PANIC;
 
@@ -399,9 +364,7 @@ impl<R: Relation> Command for Withdraw<R> {
     fn apply(self, world: &mut World) {
         while let Some(host) = world
             .get::<Edges>(self.entity)
-            .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&RelationId::of::<R>()))
-            .and_then(|targets| targets.first())
-            .copied()
+            .and_then(|edges| edges.get_first_target::<R>())
         {
             let _ = R::ZST_OR_PANIC;
 
@@ -440,157 +403,96 @@ impl Command for CheckedDespawn {
             };
 
             // Total relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Total as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
+            for (typeid, target) in edges.iter_policy_targets(CleanupPolicy::Total)
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
                     continue
                 };
 
-                let Some(target_hosts) = target_edges
-                    .hosts[CleanupPolicy::Total as usize]
-                    .get_mut(typeid)
-                else {
-                    continue
-                };
-
-                target_hosts.remove(&curr);
-
-                if target_hosts.is_empty() {
+                if target_edges.remove_host_by_ids(CleanupPolicy::Total, *typeid, curr) {
                     queue.push_back(*target);
                     to_despawn.insert(*target);
                 }
             }
 
-            for (typeid, host) in edges.hosts[CleanupPolicy::Total as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
+            for (typeid, host) in edges.iter_policy_hosts(CleanupPolicy::Total)
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                host_edges.targets[CleanupPolicy::Total as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
+                host_edges.remove_target_by_ids(CleanupPolicy::Total, *typeid, curr);
 
                 queue.push_back(*host);
                 to_despawn.insert(*host);
             }
 
             // Recursive relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Recursive as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
+            for (typeid, target) in edges.iter_policy_targets(CleanupPolicy::Recursive)
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
                     continue
                 };
 
-                let Some(target_hosts) = target_edges
-                    .hosts[CleanupPolicy::Recursive as usize]
-                    .get_mut(typeid)
-                else {
-                    continue
-                };
-
-                target_hosts.remove(&curr);
+                target_edges.remove_host_by_ids(CleanupPolicy::Recursive, *typeid, curr);
                 to_refrag.entry(*typeid).or_default().insert(*target);
             }
 
-            for (typeid, host) in edges.hosts[CleanupPolicy::Recursive as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
+            for (typeid, host) in edges.iter_policy_hosts(CleanupPolicy::Recursive)
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                host_edges.targets[CleanupPolicy::Recursive as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
+                host_edges.remove_target_by_ids(CleanupPolicy::Recursive, *typeid, curr);
 
                 queue.push_back(*host);
                 to_despawn.insert(*host);
             }
 
             // Counted relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Counted as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
+            for (typeid, target) in edges.iter_policy_targets(CleanupPolicy::Counted)
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
                     continue
                 };
 
-                let Some(target_hosts) = target_edges
-                    .hosts[CleanupPolicy::Counted as usize]
-                    .get_mut(typeid)
-                else {
-                    continue
-                };
-
-                target_hosts.remove(&curr);
-
-                if target_hosts.is_empty() {
+                if target_edges.remove_host_by_ids(CleanupPolicy::Counted, *typeid, curr) {
                     queue.push_back(*target);
                     to_despawn.insert(*target);
                 }
             }
 
-            for (typeid, host) in edges.hosts[CleanupPolicy::Counted as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
+            for (typeid, host) in edges.iter_policy_hosts(CleanupPolicy::Counted)
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                host_edges.targets[CleanupPolicy::Counted as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
+                host_edges.remove_target_by_ids(CleanupPolicy::Counted, *typeid, curr);
 
                 to_refrag.entry(*typeid).or_default().insert(*host);
             }
 
             // Orphaning relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Orphan as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
+            for (typeid, target) in edges.iter_policy_targets(CleanupPolicy::Orphan)
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
                     continue
                 };
 
-                target_edges.hosts[CleanupPolicy::Orphan as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
+                target_edges.remove_host_by_ids(CleanupPolicy::Orphan, *typeid, curr);
 
                 to_refrag.entry(*typeid).or_default().insert(*target);
             }
 
-            for (typeid, host) in edges.hosts[CleanupPolicy::Orphan as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
+            for (typeid, host) in edges.iter_policy_hosts(CleanupPolicy::Orphan)
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
                     continue
                 };
 
-                host_edges.targets[CleanupPolicy::Orphan as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
+                host_edges.remove_target_by_ids(CleanupPolicy::Orphan, *typeid, curr);
 
                 to_refrag.entry(*typeid).or_default().insert(*host);
             }
@@ -756,15 +658,11 @@ mod tests {
     fn targeting<R: Relation>(world: &World, host: Entity, target: Entity) -> bool {
         let host_is_targeting = world
             .get::<Edges>(host)
-            .map(|edges| &edges.targets[R::CLEANUP_POLICY as usize])
-            .and_then(|bucket| bucket.get(&RelationId::of::<R>()))
-            .map_or(false, |set| set.contains(&target));
+            .map_or(false, |edges| edges.has_policy_target::<R>(target));
 
         let target_is_hosted = world
             .get::<Edges>(target)
-            .map(|edges| &edges.hosts[R::CLEANUP_POLICY as usize])
-            .and_then(|bucket| bucket.get(&RelationId::of::<R>()))
-            .map_or(false, |set| set.contains(&host));
+            .map_or(false, |edges| edges.has_policy_host::<R>(host));
 
         if host_is_targeting != target_is_hosted {
             panic!("Asymmetric edge info");

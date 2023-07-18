@@ -181,8 +181,8 @@ pub trait Relation: 'static + Sized + Send + Sync {
 
 #[derive(Component, Default, Debug)]
 pub(crate) struct Edges {
-    pub hosts: [HashMap<RelationId, IndexSet<Entity>>; 4],
-    pub targets: [HashMap<RelationId, IndexSet<Entity>>; 4],
+    hosts: [HashMap<RelationId, IndexSet<Entity>>; 4],
+    targets: [HashMap<RelationId, IndexSet<Entity>>; 4],
 }
 
 type EdgeIter<'a> = std::iter::Flatten<
@@ -204,6 +204,128 @@ impl Edges {
             .map(|targets| targets.iter().copied())
             .into_iter()
             .flatten()
+    }
+
+    pub(crate) fn iter_policy_hosts(&self, policy: CleanupPolicy) -> impl Iterator<Item=(&RelationId, &bevy::prelude::Entity)> {
+        self.hosts[policy as usize]
+            .iter()
+            .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
+    }
+
+    pub(crate) fn iter_policy_targets(&self, policy: CleanupPolicy) -> impl Iterator<Item=(&RelationId, &bevy::prelude::Entity)> {
+        self.targets[policy as usize]
+            .iter()
+            .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
+    }
+
+    pub(crate) fn has_hosts<R: Relation>(&self) -> bool {
+        self.hosts[R::CLEANUP_POLICY as usize]
+            .get(&RelationId::of::<R>())
+            .map(|hosts| !hosts.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn has_targets<R: Relation>(&self) -> bool {
+        self.targets[R::CLEANUP_POLICY as usize]
+            .get(&RelationId::of::<R>())
+            .map(|targets| !targets.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn remove_hosts<R: Relation>(&mut self) {
+        self.hosts[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
+    }
+
+    pub(crate) fn remove_targets<R: Relation>(&mut self) {
+        self.targets[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self
+            .targets
+            .iter()
+            .chain(self.hosts.iter())
+            .all(HashMap::is_empty)
+    }
+
+    pub(crate) fn insert_host<R: Relation>(&mut self, host: Entity) {
+        self.hosts[R::CLEANUP_POLICY as usize]
+            .entry(RelationId::of::<R>())
+            .or_default()
+            .insert(host);
+    }
+
+    pub(crate) fn insert_target<R: Relation>(&mut self, target: Entity) {
+        self.targets[R::CLEANUP_POLICY as usize]
+            .entry(RelationId::of::<R>())
+            .or_default()
+            .insert(target);
+    }
+
+    pub(crate) fn has_policy_target<R: Relation>(&self, target: Entity) -> bool {
+        self.targets[R::CLEANUP_POLICY as usize]
+            .get(&RelationId::of::<R>())
+            .map_or(false, |x| x.contains(&target))
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn has_policy_host<R: Relation>(&self, host: Entity) -> bool {
+        self.hosts[R::CLEANUP_POLICY as usize]
+            .get(&RelationId::of::<R>())
+            .map_or(false, |x| x.contains(&host))
+    }
+
+    pub(crate) fn remove_host<R: Relation>(&mut self, host: Entity) {
+        self.hosts[R::CLEANUP_POLICY as usize]
+            .entry(RelationId::of::<R>())
+            .and_modify(|hosts| {
+                hosts.remove(&host);
+            });
+    }
+
+    pub(crate) fn remove_target<R: Relation>(&mut self, target: Entity) {
+        self.targets[R::CLEANUP_POLICY as usize]
+            .entry(RelationId::of::<R>())
+            .and_modify(|hosts| {
+                hosts.remove(&target);
+            });
+    }
+
+    pub(crate) fn remove_host_by_ids(&mut self, policy: CleanupPolicy, relation: RelationId, host: Entity) -> bool {
+        let Some(hosts) = self
+            .hosts[policy as usize]
+            .get_mut(&relation)
+        else {
+            return false;
+        };
+        hosts.remove(&host);
+        hosts.is_empty()
+    }
+
+    pub(crate) fn remove_target_by_ids(&mut self, policy: CleanupPolicy, relation: RelationId, target: Entity) -> bool {
+        let Some(targets) = self
+            .targets[policy as usize]
+            .get_mut(&relation)
+        else {
+            return false;
+        };
+        targets.remove(&target);
+        targets.is_empty()
+    }
+
+    pub(crate) fn get_first_target<R: Relation>(&self) -> Option<Entity> {
+        self.targets[R::CLEANUP_POLICY as usize]
+            .get(&RelationId::of::<R>())
+            .and_then(|targets| targets.first())
+            .copied()
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn get_first_host<R: Relation>(&self) -> Option<Entity> {
+        self.hosts[R::CLEANUP_POLICY as usize]
+            .get(&RelationId::of::<R>())
+            .and_then(|targets| targets.first())
+            .copied()
     }
 }
 
