@@ -412,7 +412,7 @@ impl IterRelations for Edges {
     fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
         self.hosts[R::CLEANUP_POLICY as usize]
             .get(&RelationId::of::<R>())
-            .map(|targets| targets.iter().copied())
+            .map(|hosts| hosts.iter().copied())
             .into_iter()
             .flatten()
     }
