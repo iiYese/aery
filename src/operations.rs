@@ -1,5 +1,5 @@
 use crate::{
-    relation::{CheckRelations, EdgeWQ, EdgeWQItem, Relation, ZstOrPanic},
+    relation::{CheckRelations, EdgeIter, EdgeWQ, EdgeWQItem, IterRelations, Relation, ZstOrPanic},
     tuple_traits::*,
 };
 use bevy::ecs::{
@@ -8,10 +8,6 @@ use bevy::ecs::{
     system::Query,
 };
 use std::{borrow::Borrow, collections::VecDeque, marker::PhantomData};
-
-type EdgeIter<'a> = std::iter::Flatten<
-    std::option::IntoIter<std::iter::Copied<indexmap::set::Iter<'a, bevy::prelude::Entity>>>,
->;
 
 /// Struct to track inner product iteration.
 pub struct EdgeProduct<'a, const N: usize> {
@@ -65,18 +61,6 @@ pub struct Relations<R: RelationSet> {
     _phantom: PhantomData<R>,
 }
 
-impl<RS: RelationSet> RelationsItem<'_, RS> {
-    pub fn iter_hosts<R: Relation>(&self) -> EdgeIter<'_> {
-        let _ = R::ZST_OR_PANIC;
-        self.edges.edges.iter_hosts::<R>()
-    }
-
-    pub fn iter_targets<R: Relation>(&self) -> EdgeIter<'_> {
-        let _ = R::ZST_OR_PANIC;
-        self.edges.edges.iter_targets::<R>()
-    }
-}
-
 impl<R: RelationSet> CheckRelations for RelationsItem<'_, R> {
     fn has_host(
         &self,
@@ -92,6 +76,66 @@ impl<R: RelationSet> CheckRelations for RelationsItem<'_, R> {
         target: impl Into<crate::Var<Entity>>,
     ) -> bool {
         self.edges.edges.has_target(relation, target)
+    }
+}
+
+impl<R: RelationSet> CheckRelations for Option<&RelationsItem<'_, R>> {
+    fn has_host(
+        &self,
+        relation: impl Into<crate::Var<crate::relation::RelationId>>,
+        host: impl Into<crate::Var<Entity>>,
+    ) -> bool {
+        self.is_some_and(|item| item.edges.edges.has_host(relation, host))
+    }
+
+    fn has_target(
+        &self,
+        relation: impl Into<crate::Var<crate::relation::RelationId>>,
+        target: impl Into<crate::Var<Entity>>,
+    ) -> bool {
+        self.is_some_and(|item: &RelationsItem<'_, R>| {
+            item.edges.edges.has_target(relation, target)
+        })
+    }
+}
+
+impl<RS: RelationSet> IterRelations for RelationsItem<'_, RS> {
+    type Hosts<'a> = EdgeIter<'a>
+    where
+        Self: 'a;
+
+    type Targets<'a> = EdgeIter<'a>
+    where
+        Self: 'a;
+
+    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
+        self.edges.edges.iter_hosts::<R>()
+    }
+
+    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_> {
+        self.edges.edges.iter_targets::<R>()
+    }
+}
+
+impl<RS: RelationSet> IterRelations for Option<&RelationsItem<'_, RS>> {
+    type Hosts<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
+    where
+        Self: 'a;
+
+    type Targets<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
+    where
+        Self: 'a;
+
+    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
+        self.map(|relations| relations.edges.edges.iter_hosts::<R>())
+            .into_iter()
+            .flatten()
+    }
+
+    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_> {
+        self.map(|relations| relations.edges.edges.iter_targets::<R>())
+            .into_iter()
+            .flatten()
     }
 }
 
