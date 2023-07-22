@@ -356,7 +356,7 @@ pub trait IterRelations {
     where
         Self: 'a;
 
-    /// The iterator type returned by `iter_targets`
+    /// The iterator type returned by `iter_targets`.
     type Targets<'a>: Iterator<Item = Entity>
     where
         Self: 'a;
