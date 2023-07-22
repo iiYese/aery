@@ -351,13 +351,8 @@ impl CheckRelations for EntityMut<'_> {
 
 /// Trait to iterate all hosts or targets of an entity's given [`Relation`].
 pub trait IterRelations {
-    /// The iterator type returned by `iter_hosts`.
-    type Hosts<'a>: Iterator<Item = Entity>
-    where
-        Self: 'a;
-
-    /// The iterator type returned by `iter_targets`.
-    type Targets<'a>: Iterator<Item = Entity>
+    /// The iterator type returned by `iter_hosts` and `iter_targets`.
+    type Entities<'a>: Iterator<Item = Entity>
     where
         Self: 'a;
 
@@ -372,11 +367,11 @@ pub trait IterRelations {
     ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
     /// for host in entity.iter_hosts::<R>() {
     ///     // You could use the entity in a `query.get`, for example.
-    ///     // It's like a generic version of bevy's `&Parent` query param.
+    ///     // It's like a generic version of bevy's `&Children` query param.
     /// }
     ///# }
     /// ```
-    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_>;
+    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_>;
 
     /// Return all entities that this entity targets with the given [`Relation`] `R`.
     /// ```
@@ -389,11 +384,11 @@ pub trait IterRelations {
     ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
     /// for target in entity.iter_targets::<R>() {
     ///     // You could use the entity in a `query.get`, for example.
-    ///     // It's like a generic version of bevy's `&Children` query param.
+    ///     // It's like a generic version of bevy's `&Parent` query param.
     /// }
     ///# }
     /// ```
-    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_>;
+    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_>;
 }
 
 pub(crate) type EdgeIter<'a> = std::iter::Flatten<
@@ -401,15 +396,11 @@ pub(crate) type EdgeIter<'a> = std::iter::Flatten<
 >;
 
 impl IterRelations for Edges {
-    type Hosts<'a> = EdgeIter<'a>
+    type Entities<'a> = EdgeIter<'a>
     where
         Self: 'a;
 
-    type Targets<'a> = EdgeIter<'a>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
+    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
         self.hosts[R::CLEANUP_POLICY as usize]
             .get(&RelationId::of::<R>())
             .map(|hosts| hosts.iter().copied())
@@ -417,7 +408,7 @@ impl IterRelations for Edges {
             .flatten()
     }
 
-    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_> {
+    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
         self.targets[R::CLEANUP_POLICY as usize]
             .get(&RelationId::of::<R>())
             .map(|targets| targets.iter().copied())
@@ -427,40 +418,32 @@ impl IterRelations for Edges {
 }
 
 impl IterRelations for EdgeWQItem<'_> {
-    type Hosts<'a> = EdgeIter<'a>
+    type Entities<'a> = EdgeIter<'a>
     where
         Self: 'a;
 
-    type Targets<'a> = EdgeIter<'a>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
+    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
         self.edges.iter_hosts::<R>()
     }
 
-    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_> {
+    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
         self.edges.iter_targets::<R>()
     }
 }
 
 impl IterRelations for EntityRef<'_> {
-    type Hosts<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
+    type Entities<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
     where
         Self: 'a;
 
-    type Targets<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
+    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
         self.get::<Edges>()
             .map(|edges| edges.iter_hosts::<R>())
             .into_iter()
             .flatten()
     }
 
-    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_> {
+    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
         self.get::<Edges>()
             .map(|edges| edges.iter_targets::<R>())
             .into_iter()
@@ -469,22 +452,18 @@ impl IterRelations for EntityRef<'_> {
 }
 
 impl IterRelations for EntityMut<'_> {
-    type Hosts<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
+    type Entities<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
     where
         Self: 'a;
 
-    type Targets<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Hosts<'_> {
+    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
         self.get::<Edges>()
             .map(|edges| edges.iter_hosts::<R>())
             .into_iter()
             .flatten()
     }
 
-    fn iter_targets<R: Relation>(&self) -> Self::Targets<'_> {
+    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
         self.get::<Edges>()
             .map(|edges| edges.iter_targets::<R>())
             .into_iter()
