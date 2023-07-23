@@ -156,7 +156,9 @@ pub mod prelude {
             AeryQueryExt, ControlFlow, FoldBreadth, ForEachPermutations, ForEachPermutations3Arity,
             Join, Relations, Traverse,
         },
-        relation::{CheckRelations, CleanupPolicy, Participates, Relation, Root, ZstOrPanic},
+        relation::{
+            CheckRelations, CleanupPolicy, IterRelations, Participates, Relation, Root, ZstOrPanic,
+        },
         scope::Scope,
         tuple_traits::{Joinable, RelationSet},
         Aery,
