@@ -1535,6 +1535,13 @@ mod compile_tests {
             .join::<R1>(&mut right)
             .for_each(|a0, a1, b| {});
     }
+
+    fn query_optional(left: Query<(&A, Relations<(R0, Option<R1>)>)>, b: Query<&B>, c: Query<&C>) {
+        left.ops()
+            .join::<R0>(&b)
+            .join::<R1>(&c)
+            .for_each(|a, (b, c)| {});
+    }
 }
 
 #[cfg(test)]
