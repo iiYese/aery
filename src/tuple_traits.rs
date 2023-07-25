@@ -16,6 +16,7 @@ mod sealed {
     pub trait Sealed {}
 
     impl<R: Relation> Sealed for R {}
+    impl<R: Relation> Sealed for Option<R> {}
 
     impl<Q, F> Sealed for &'_ Query<'_, '_, Q, F>
     where
@@ -53,6 +54,10 @@ pub trait RelationSet: Sized + Sealed {
 
 impl<R: Relation> RelationSet for R {
     type Filters = Participates<R>;
+}
+
+impl<R: Relation> RelationSet for Option<R> {
+    type Filters = ();
 }
 
 macro_rules! impl_relation_set {
