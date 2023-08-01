@@ -864,6 +864,9 @@ pub enum ControlFlow {
     /// - Any remaining entities on the current breadth.
     /// - Entities on the breadth of the next depth that are before the current child/ancestor.
     Probe,
+    /// Conclude's a traversal path. Useful for traversals that start from multiple points like
+    /// hierarchy ascent to find siblings.
+    Conclude,
 }
 
 impl From<()> for ControlFlow {
@@ -940,7 +943,7 @@ where
                 .into()
                 {
                     ControlFlow::Continue => {}
-                    ControlFlow::Exit => return,
+                    ControlFlow::Exit | ControlFlow::Conclude => return,
                     ControlFlow::Walk | ControlFlow::Probe => break,
                     ControlFlow::FastForward(n) if n < N => {
                         matches[n] = false;
@@ -987,7 +990,7 @@ where
                 .into()
                 {
                     ControlFlow::Continue => {}
-                    ControlFlow::Exit => return,
+                    ControlFlow::Exit | ControlFlow::Conclude => return,
                     ControlFlow::Walk | ControlFlow::Probe => break,
                     ControlFlow::FastForward(n) if n < N => {
                         matches[n] = false;
@@ -1035,6 +1038,9 @@ where
 
                 match func(&mut control, traversal_item.0).into() {
                     ControlFlow::Exit => return,
+                    ControlFlow::Conclude => {
+                        continue 'queue;
+                    }
                     ControlFlow::Probe => {
                         queue.clear();
                         queue.push_back(e);
@@ -1091,6 +1097,9 @@ where
 
                 match func(&mut control, traversal_item.0).into() {
                     ControlFlow::Exit => return,
+                    ControlFlow::Conclude => {
+                        continue 'queue;
+                    }
                     ControlFlow::Probe => {
                         queue.clear();
                         queue.push_back(e);
@@ -1167,6 +1176,9 @@ where
 
                 match func(&mut left, traversal_item.0).into() {
                     ControlFlow::Exit => return,
+                    ControlFlow::Conclude => {
+                        continue 'queue;
+                    }
                     ControlFlow::Probe => {
                         queue.clear();
                         queue.push_back(e);
@@ -1242,6 +1254,9 @@ where
 
                 match func(&mut left, traversal_item.0).into() {
                     ControlFlow::Exit => return,
+                    ControlFlow::Conclude => {
+                        continue 'queue;
+                    }
                     ControlFlow::Probe => {
                         queue.clear();
                         queue.push_back(e);
@@ -1346,6 +1361,9 @@ where
                         ControlFlow::FastForward(n) if n < N => {
                             matches[n] = false;
                         }
+                        ControlFlow::Conclude => {
+                            continue 'queue;
+                        }
                         ControlFlow::Probe => {
                             queue.clear();
                             queue.push_back(mid);
@@ -1432,6 +1450,9 @@ where
                         ControlFlow::Walk => break,
                         ControlFlow::FastForward(n) if n < N => {
                             matches[n] = false;
+                        }
+                        ControlFlow::Conclude => {
+                            continue 'queue;
                         }
                         ControlFlow::Probe => {
                             queue.clear();
