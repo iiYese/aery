@@ -4,7 +4,7 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
-        query::{Or, With, WorldQuery},
+        query::{Or, With, Without, WorldQuery},
         world::{EntityMut, EntityRef},
     },
     utils::HashMap,
@@ -52,6 +52,12 @@ pub struct Root<R: Relation> {
 #[derive(WorldQuery)]
 pub struct Participates<R: Relation> {
     filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
+}
+
+/// Filter to find those who have no hosts nor targets of a relationship.
+#[derive(WorldQuery)]
+pub struct Abstains<R: Relation> {
+    filter: (Without<Participant<R>>, Without<RootMarker<R>>),
 }
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
