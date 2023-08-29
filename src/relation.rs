@@ -54,7 +54,7 @@ pub struct Participates<R: Relation> {
     filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
 }
 
-/// Filter to find those who have no hosts nor targets of a relationship.
+/// Filter to find entities that are not hosts or targets of a relationship.
 #[derive(WorldQuery)]
 pub struct Abstains<R: Relation> {
     filter: (Without<Participant<R>>, Without<RootMarker<R>>),
