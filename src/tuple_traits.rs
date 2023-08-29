@@ -78,7 +78,7 @@ macro_rules! impl_product {
     ($($P:ident),*) => {
         impl<$($P: Relation),*> Product<{ count!($($P )*) }> for ($($P,)*) {
             fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, { count!($($P )*) }> {
-                let base_iterators = [$(crate::relation::IterRelations::iter_targets::<$P>(edges.edges),)*];
+                let base_iterators = [$(crate::relation::IterRelations::iter_hosts::<$P>(edges.edges),)*];
                 let live_iterators = base_iterators.clone();
                 let entities = [None::<Entity>; count!($($P )*)];
 
