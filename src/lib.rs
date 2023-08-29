@@ -153,8 +153,8 @@ pub mod prelude {
         commands::{RelationCommands, Set, Unset},
         events::{TargetEvent, TargetOp},
         operations::{
-            AeryQueryExt, ControlFlow, FoldBreadth, ForEachPermutations, ForEachPermutations3Arity,
-            Join, Relations, Traverse,
+            AeryQueryExt, ControlFlow, EdgeSelection, FoldBreadth, ForEachPermutations,
+            ForEachPermutations3Arity, Join, Relations, Target, Traverse,
         },
         relation::{
             CheckRelations, CleanupPolicy, IterRelations, Participates, Relation, Root, ZstOrPanic,

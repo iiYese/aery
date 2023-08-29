@@ -142,7 +142,7 @@ pub struct Operations<
     control: Control,
     joined_types: PhantomData<JoinedTypes>,
     joined_queries: JoinedQueries,
-    traversal: Traversal,
+    traversal: PhantomData<Traversal>,
     starts: Starts,
     init: Init,
     fold: Fold,
@@ -174,7 +174,7 @@ where
             control: self,
             joined_types: PhantomData,
             joined_queries: (),
-            traversal: (),
+            traversal: PhantomData,
             starts: (),
             init: (),
             fold: (),
@@ -189,7 +189,7 @@ where
             control: self,
             joined_types: PhantomData,
             joined_queries: (),
-            traversal: (),
+            traversal: PhantomData,
             starts: (),
             init: (),
             fold: (),
@@ -197,22 +197,21 @@ where
     }
 }
 
-pub trait Traversal {
-    fn iter<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a>;
+pub trait EdgeSelection {
+    fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a>;
 }
 
-pub struct BreadthFirstAscent<R: Relation>(PhantomData<R>);
-pub struct BreadthFirstDescent<R: Relation>(PhantomData<R>);
-
-impl<R: Relation> Traversal for BreadthFirstAscent<R> {
-    fn iter<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
-        edges.edges.iter_targets::<R>()
+impl<R: Relation> EdgeSelection for R {
+    fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
+        edges.edges.iter_hosts::<R>()
     }
 }
 
-impl<R: Relation> Traversal for BreadthFirstDescent<R> {
-    fn iter<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
-        edges.edges.iter_hosts::<R>()
+pub struct Target<R: Relation>(PhantomData<R>);
+
+impl<R: Relation> EdgeSelection for Target<R> {
+    fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
+        edges.edges.iter_targets::<R>()
     }
 }
 
@@ -290,11 +289,8 @@ where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
-    type Out<T: Relation>;
-    type OutDown<T: Relation>;
-
-    fn traverse<T: Relation>(self, starts: I) -> Self::OutDown<T>;
-    fn traverse_targets<T: Relation>(self, starts: I) -> Self::Out<T>;
+    type Out<T: EdgeSelection>;
+    fn traverse<T: EdgeSelection>(self, starts: I) -> Self::Out<T>;
 }
 
 impl<Control, JoinedTypes, JoinedQueries, E, Starts, Init, Fold> Traverse<E, Starts>
@@ -303,30 +299,15 @@ where
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
 {
-    type Out<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstAscent<T>, Starts, Init, Fold>;
+    type Out<T: EdgeSelection> =
+        Operations<Control, JoinedTypes, JoinedQueries, T, Starts, Init, Fold>;
 
-    type OutDown<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, BreadthFirstDescent<T>, Starts, Init, Fold>;
-
-    fn traverse<T: Relation>(self, starts: Starts) -> Self::OutDown<T> {
+    fn traverse<T: EdgeSelection>(self, starts: Starts) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
-            traversal: BreadthFirstDescent::<T>(PhantomData),
-            init: self.init,
-            fold: self.fold,
-            starts,
-        }
-    }
-
-    fn traverse_targets<T: Relation>(self, starts: Starts) -> Self::Out<T> {
-        Operations {
-            control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: BreadthFirstAscent::<T>(PhantomData),
+            traversal: PhantomData,
             init: self.init,
             fold: self.fold,
             starts,
@@ -518,8 +499,8 @@ pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
 {
-    type Out<T: Relation>;
-    fn join<T: Relation>(self, item: Item) -> Self::Out<T>;
+    type Out<T: EdgeSelection>;
+    fn join<T: EdgeSelection>(self, item: Item) -> Self::Out<T>;
 }
 
 impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Roots> Join<Item>
@@ -529,7 +510,7 @@ where
     JoinedTypes: Append,
     JoinedQueries: Append,
 {
-    type Out<T: Relation> = Operations<
+    type Out<T: EdgeSelection> = Operations<
         Control,
         <JoinedTypes as Append>::Out<T>,
         <JoinedQueries as Append>::Out<Item>,
@@ -537,7 +518,7 @@ where
         Roots,
     >;
 
-    fn join<T: Relation>(self, item: Item) -> Self::Out<T> {
+    fn join<T: EdgeSelection>(self, item: Item) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: PhantomData,
@@ -589,6 +570,7 @@ where
 ///     })
 /// }
 /// ```
+///
 ///
 /// ## FastForward Illustration:
 /// ```
@@ -1008,7 +990,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Traversal,
+    T: EdgeSelection,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -1028,12 +1010,12 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             let Ok((mut control, relations)) = self.control.get(entity) else {
-                continue
+                continue;
             };
 
-            for e in T::iter(&relations.edges) {
+            for e in T::entities(&relations.edges) {
                 let Ok(traversal_item) = self.control.get(e) else {
-                    continue
+                    continue;
                 };
 
                 match func(&mut control, traversal_item.0).into() {
@@ -1050,9 +1032,7 @@ where
                 }
             }
 
-            for e in T::iter(&relations.edges) {
-                queue.push_back(e);
-            }
+            queue.extend(T::entities(&relations.edges));
         }
     }
 }
@@ -1063,7 +1043,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Traversal,
+    T: EdgeSelection,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -1083,16 +1063,15 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((mut control, relations)) = (unsafe {
-                self.control.get_unchecked(entity)
-            }) else {
-                continue
+            let Ok((mut control, relations)) = (unsafe { self.control.get_unchecked(entity) })
+            else {
+                continue;
             };
 
-            for e in T::iter(&relations.edges) {
+            for e in T::entities(&relations.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(traversal_item) = (unsafe { self.control.get_unchecked(e) }) else {
-                    continue
+                    continue;
                 };
 
                 match func(&mut control, traversal_item.0).into() {
@@ -1109,9 +1088,7 @@ where
                 }
             }
 
-            for e in T::iter(&relations.edges) {
-                queue.push_back(e);
-            }
+            queue.extend(T::entities(&relations.edges));
         }
     }
 }
@@ -1122,7 +1099,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Traversal,
+    T: EdgeSelection,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     Init: for<'a> FnMut(&mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>) -> Acc,
@@ -1150,14 +1127,14 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             let Ok((mut control, relations)) = self.control.get(entity) else {
-                continue
+                continue;
             };
 
             let mut acc = Ok::<_, Err>((self.init)(&mut control));
 
-            for e in T::iter(&relations.edges) {
+            for e in T::entities(&relations.edges) {
                 let Ok(traversal_item) = self.control.get(e) else {
-                    continue
+                    continue;
                 };
 
                 let Ok(acc_ok) = acc else {
@@ -1169,9 +1146,9 @@ where
 
             let mut left = (control, acc);
 
-            for e in T::iter(&relations.edges) {
+            for e in T::entities(&relations.edges) {
                 let Ok(traversal_item) = self.control.get(e) else {
-                    continue
+                    continue;
                 };
 
                 match func(&mut left, traversal_item.0).into() {
@@ -1188,9 +1165,7 @@ where
                 }
             }
 
-            for e in T::iter(&relations.edges) {
-                queue.push_back(e);
-            }
+            queue.extend(T::entities(&relations.edges));
         }
     }
 }
@@ -1201,7 +1176,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Traversal,
+    T: EdgeSelection,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>) -> Acc,
@@ -1223,18 +1198,17 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((mut control, relations)) = (unsafe {
-                self.control.get_unchecked(entity)
-            }) else {
-                continue
+            let Ok((mut control, relations)) = (unsafe { self.control.get_unchecked(entity) })
+            else {
+                continue;
             };
 
             let mut acc = Ok::<_, Err>((self.init)(&mut control));
 
-            for e in T::iter(&relations.edges) {
+            for e in T::entities(&relations.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(traversal_item) = (unsafe { self.control.get_unchecked(e) }) else {
-                    continue
+                    continue;
                 };
 
                 let Ok(acc_ok) = acc else {
@@ -1246,10 +1220,10 @@ where
 
             let mut left = (control, acc);
 
-            for e in T::iter(&relations.edges) {
+            for e in T::entities(&relations.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(traversal_item) = (unsafe { self.control.get_unchecked(e) }) else {
-                    continue
+                    continue;
                 };
 
                 match func(&mut left, traversal_item.0).into() {
@@ -1266,9 +1240,7 @@ where
                 }
             }
 
-            for e in T::iter(&relations.edges) {
-                queue.push_back(e);
-            }
+            queue.extend(T::entities(&relations.edges));
         }
     }
 }
@@ -1300,7 +1272,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Traversal,
+    T: EdgeSelection,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
@@ -1327,15 +1299,12 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             let Ok((mut left_components, left_edges)) = self.control.get(entity) else {
-                continue
+                continue;
             };
 
-            for mid in T::iter(&left_edges.edges) {
-                let Ok((mut mid_components, mid_edges)) = self
-                    .control
-                    .get(mid)
-                else {
-                    continue
+            for mid in T::entities(&left_edges.edges) {
+                let Ok((mut mid_components, mid_edges)) = self.control.get(mid) else {
+                    continue;
                 };
 
                 let mut edge_product = JoinedTypes::product(mid_edges.edges);
@@ -1374,9 +1343,7 @@ where
                 }
             }
 
-            for e in T::iter(&left_edges.edges) {
-                queue.push_back(e);
-            }
+            queue.extend(T::entities(&left_edges.edges));
         }
     }
 }
@@ -1387,7 +1354,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: Traversal,
+    T: EdgeSelection,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
@@ -1414,18 +1381,18 @@ where
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
-            let Ok((mut left_components, left_edges)) = (unsafe {
-                self.control.get_unchecked(entity)
-            }) else {
-                continue
+            let Ok((mut left_components, left_edges)) =
+                (unsafe { self.control.get_unchecked(entity) })
+            else {
+                continue;
             };
 
-            for mid in T::iter(&left_edges.edges) {
+            for mid in T::entities(&left_edges.edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
-                let Ok((mut mid_components, mid_edges)) = (unsafe {
-                    self.control.get_unchecked(mid)
-                }) else {
-                    continue
+                let Ok((mut mid_components, mid_edges)) =
+                    (unsafe { self.control.get_unchecked(mid) })
+                else {
+                    continue;
                 };
 
                 let mut edge_product = JoinedTypes::product(mid_edges.edges);
@@ -1464,9 +1431,7 @@ where
                 }
             }
 
-            for e in T::iter(&left_edges.edges) {
-                queue.push_back(e);
-            }
+            queue.extend(T::entities(&left_edges.edges));
         }
     }
 }
@@ -1640,9 +1605,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<R0>(&mut a)
-                .join::<R1>(&mut b)
-                .join::<R2>(&mut c)
+                .join::<Target<R0>>(&mut a)
+                .join::<Target<R1>>(&mut b)
+                .join::<Target<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -1723,9 +1688,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<R0>(&mut a)
-                .join::<R1>(&mut b)
-                .join::<R2>(&mut c)
+                .join::<Target<R0>>(&mut a)
+                .join::<Target<R1>>(&mut b)
+                .join::<Target<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -1814,9 +1779,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<R0>(&mut a)
-                .join::<R1>(&mut b)
-                .join::<R2>(&mut c)
+                .join::<Target<R0>>(&mut a)
+                .join::<Target<R1>>(&mut b)
+                .join::<Target<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -1898,9 +1863,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<R0>(&mut a)
-                .join::<R1>(&mut b)
-                .join::<R2>(&mut c)
+                .join::<Target<R0>>(&mut a)
+                .join::<Target<R1>>(&mut b)
+                .join::<Target<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
