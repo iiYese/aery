@@ -154,12 +154,12 @@ pub mod prelude {
         events::{TargetEvent, TargetOp},
         operations::{
             AeryQueryExt, ControlFlow, EdgeQuery, FoldBreadth, ForEachPermutations,
-            ForEachPermutations3Arity, Join, Relations, Target, Traverse,
+            ForEachPermutations3Arity, Join, Relations, Targets, Traverse,
         },
         relation::{
             CheckRelations, CleanupPolicy, IterRelations, Participates, Relation, Root, ZstOrPanic,
         },
-        scope::Scope,
+        scope::{EntituMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
         Aery,
     };

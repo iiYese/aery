@@ -207,9 +207,9 @@ impl<R: Relation> EdgeQuery for R {
     }
 }
 
-pub struct Target<R: Relation>(PhantomData<R>);
+pub struct Targets<R: Relation>(PhantomData<R>);
 
-impl<R: Relation> EdgeQuery for Target<R> {
+impl<R: Relation> EdgeQuery for Targets<R> {
     fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
         edges.edges.iter_targets::<R>()
     }
@@ -289,8 +289,10 @@ where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
-    type Out<T: EdgeQuery>;
-    fn traverse<T: EdgeQuery>(self, starts: I) -> Self::Out<T>;
+    type Traversal<T: Relation>;
+    type TargetTraversal<T: Relation>;
+    fn traverse<T: Relation>(self, starts: I) -> Self::Traversal<T>;
+    fn traverse_targets<T: Relation>(self, starts: I) -> Self::TargetTraversal<T>;
 }
 
 impl<Control, JoinedTypes, JoinedQueries, E, Starts, Init, Fold> Traverse<E, Starts>
@@ -299,9 +301,25 @@ where
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
 {
-    type Out<T: EdgeQuery> = Operations<Control, JoinedTypes, JoinedQueries, T, Starts, Init, Fold>;
+    type Traversal<T: Relation> =
+        Operations<Control, JoinedTypes, JoinedQueries, T, Starts, Init, Fold>;
 
-    fn traverse<T: EdgeQuery>(self, starts: Starts) -> Self::Out<T> {
+    type TargetTraversal<T: Relation> =
+        Operations<Control, JoinedTypes, JoinedQueries, Targets<T>, Starts, Init, Fold>;
+
+    fn traverse<T: Relation>(self, starts: Starts) -> Self::Traversal<T> {
+        Operations {
+            control: self.control,
+            joined_types: self.joined_types,
+            joined_queries: self.joined_queries,
+            traversal: PhantomData,
+            init: self.init,
+            fold: self.fold,
+            starts,
+        }
+    }
+
+    fn traverse_targets<T: Relation>(self, starts: Starts) -> Self::TargetTraversal<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
@@ -498,8 +516,10 @@ pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
 {
-    type Out<T: EdgeQuery>;
-    fn join<T: EdgeQuery>(self, item: Item) -> Self::Out<T>;
+    type Joined<T: Relation>;
+    type TargetJoined<T: Relation>;
+    fn join<T: Relation>(self, item: Item) -> Self::Joined<T>;
+    fn join_targets<T: Relation>(self, item: Item) -> Self::TargetJoined<T>;
 }
 
 impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Roots> Join<Item>
@@ -509,7 +529,7 @@ where
     JoinedTypes: Append,
     JoinedQueries: Append,
 {
-    type Out<T: EdgeQuery> = Operations<
+    type Joined<T: Relation> = Operations<
         Control,
         <JoinedTypes as Append>::Out<T>,
         <JoinedQueries as Append>::Out<Item>,
@@ -517,7 +537,27 @@ where
         Roots,
     >;
 
-    fn join<T: EdgeQuery>(self, item: Item) -> Self::Out<T> {
+    type TargetJoined<T: Relation> = Operations<
+        Control,
+        <JoinedTypes as Append>::Out<Targets<T>>,
+        <JoinedQueries as Append>::Out<Item>,
+        Traversal,
+        Roots,
+    >;
+
+    fn join<T: Relation>(self, item: Item) -> Self::Joined<T> {
+        Operations {
+            control: self.control,
+            joined_types: PhantomData,
+            joined_queries: Append::append(self.joined_queries, item),
+            traversal: self.traversal,
+            starts: self.starts,
+            fold: self.fold,
+            init: self.init,
+        }
+    }
+
+    fn join_targets<T: Relation>(self, item: Item) -> Self::TargetJoined<T> {
         Operations {
             control: self.control,
             joined_types: PhantomData,
@@ -1604,9 +1644,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Target<R0>>(&mut a)
-                .join::<Target<R1>>(&mut b)
-                .join::<Target<R2>>(&mut c)
+                .join_targets::<R0>(&mut a)
+                .join_targets::<R1>(&mut b)
+                .join_targets::<R2>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -1687,9 +1727,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Target<R0>>(&mut a)
-                .join::<Target<R1>>(&mut b)
-                .join::<Target<R2>>(&mut c)
+                .join_targets::<R0>(&mut a)
+                .join_targets::<R1>(&mut b)
+                .join_targets::<R2>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -1778,9 +1818,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Target<R0>>(&mut a)
-                .join::<Target<R1>>(&mut b)
-                .join::<Target<R2>>(&mut c)
+                .join_targets::<R0>(&mut a)
+                .join_targets::<R1>(&mut b)
+                .join_targets::<R2>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -1862,9 +1902,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Target<R0>>(&mut a)
-                .join::<Target<R1>>(&mut b)
-                .join::<Target<R2>>(&mut c)
+                .join_targets::<R0>(&mut a)
+                .join_targets::<R1>(&mut b)
+                .join_targets::<R2>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
