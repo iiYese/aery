@@ -1,7 +1,8 @@
 use crate::{
-    operations::{EdgeProduct, EdgeSelection},
+    operations::{EdgeProduct, EdgeQuery},
     relation::{EdgeWQItem, Participates, Relation},
 };
+
 use bevy::{
     ecs::{
         entity::Entity,
@@ -76,9 +77,9 @@ pub trait Product<const N: usize> {
 
 macro_rules! impl_product {
     ($($P:ident),*) => {
-        impl<$($P: EdgeSelection),*> Product<{ count!($($P )*) }> for ($($P,)*) {
+        impl<$($P: EdgeQuery),*> Product<{ count!($($P )*) }> for ($($P,)*) {
             fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, { count!($($P )*) }> {
-                let base_iterators = [$(<$P as crate::operations::EdgeSelection>::entities(&edges),)*];
+                let base_iterators = [$(<$P as crate::operations::EdgeQuery>::entities(&edges),)*];
                 let live_iterators = base_iterators.clone();
                 let entities = [None::<Entity>; count!($($P )*)];
 

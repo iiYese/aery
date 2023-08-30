@@ -197,11 +197,11 @@ where
     }
 }
 
-pub trait EdgeSelection {
+pub trait EdgeQuery {
     fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a>;
 }
 
-impl<R: Relation> EdgeSelection for R {
+impl<R: Relation> EdgeQuery for R {
     fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
         edges.edges.iter_hosts::<R>()
     }
@@ -209,7 +209,7 @@ impl<R: Relation> EdgeSelection for R {
 
 pub struct Target<R: Relation>(PhantomData<R>);
 
-impl<R: Relation> EdgeSelection for Target<R> {
+impl<R: Relation> EdgeQuery for Target<R> {
     fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
         edges.edges.iter_targets::<R>()
     }
@@ -289,8 +289,8 @@ where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
-    type Out<T: EdgeSelection>;
-    fn traverse<T: EdgeSelection>(self, starts: I) -> Self::Out<T>;
+    type Out<T: EdgeQuery>;
+    fn traverse<T: EdgeQuery>(self, starts: I) -> Self::Out<T>;
 }
 
 impl<Control, JoinedTypes, JoinedQueries, E, Starts, Init, Fold> Traverse<E, Starts>
@@ -299,10 +299,9 @@ where
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
 {
-    type Out<T: EdgeSelection> =
-        Operations<Control, JoinedTypes, JoinedQueries, T, Starts, Init, Fold>;
+    type Out<T: EdgeQuery> = Operations<Control, JoinedTypes, JoinedQueries, T, Starts, Init, Fold>;
 
-    fn traverse<T: EdgeSelection>(self, starts: Starts) -> Self::Out<T> {
+    fn traverse<T: EdgeQuery>(self, starts: Starts) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
@@ -499,8 +498,8 @@ pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
 {
-    type Out<T: EdgeSelection>;
-    fn join<T: EdgeSelection>(self, item: Item) -> Self::Out<T>;
+    type Out<T: EdgeQuery>;
+    fn join<T: EdgeQuery>(self, item: Item) -> Self::Out<T>;
 }
 
 impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Roots> Join<Item>
@@ -510,7 +509,7 @@ where
     JoinedTypes: Append,
     JoinedQueries: Append,
 {
-    type Out<T: EdgeSelection> = Operations<
+    type Out<T: EdgeQuery> = Operations<
         Control,
         <JoinedTypes as Append>::Out<T>,
         <JoinedQueries as Append>::Out<Item>,
@@ -518,7 +517,7 @@ where
         Roots,
     >;
 
-    fn join<T: EdgeSelection>(self, item: Item) -> Self::Out<T> {
+    fn join<T: EdgeQuery>(self, item: Item) -> Self::Out<T> {
         Operations {
             control: self.control,
             joined_types: PhantomData,
@@ -990,7 +989,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeSelection,
+    T: EdgeQuery,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -1043,7 +1042,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeSelection,
+    T: EdgeQuery,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -1099,7 +1098,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeSelection,
+    T: EdgeQuery,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     Init: for<'a> FnMut(&mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>) -> Acc,
@@ -1176,7 +1175,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeSelection,
+    T: EdgeQuery,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>) -> Acc,
@@ -1272,7 +1271,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeSelection,
+    T: EdgeQuery,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
@@ -1354,7 +1353,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeSelection,
+    T: EdgeQuery,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
