@@ -24,17 +24,27 @@ pub struct Scope<'w, T = ()> {
 
 #[allow(clippy::should_implement_trait)]
 impl<R: Relation> Scope<'_, R> {
-    pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
-        let spawned = self.world.spawn(bundle).id();
-        Command::apply(Set::<R>::new(spawned, self.top), self.world);
-        self.last = spawned;
+    pub fn add(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
+        let id = {
+            let mut spawned = self.world.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
+
+        Command::apply(Set::<R>::new(id, self.top), self.world);
+        self.last = id;
         self
     }
 
-    pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
-        let spawned = self.world.spawn(bundle).id();
-        Command::apply(Set::<R>::new(self.top, spawned), self.world);
-        self.last = spawned;
+    pub fn add_target(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
+        let id = {
+            let mut spawned = self.world.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
+
+        Command::apply(Set::<R>::new(self.top, id), self.world);
+        self.last = id;
         self
     }
 }
