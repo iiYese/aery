@@ -24,7 +24,21 @@ pub struct Scope<'w, T = ()> {
 
 #[allow(clippy::should_implement_trait)]
 impl<R: Relation> Scope<'_, R> {
-    pub fn add(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
+    pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.world.spawn(bundle).id();
+        Command::apply(Set::<R>::new(id, self.top), self.world);
+        self.last = id;
+        self
+    }
+
+    pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.world.spawn(bundle).id();
+        Command::apply(Set::<R>::new(self.top, id), self.world);
+        self.last = id;
+        self
+    }
+
+    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
         let id = {
             let mut spawned = self.world.spawn(());
             func(&mut spawned);
@@ -36,7 +50,10 @@ impl<R: Relation> Scope<'_, R> {
         self
     }
 
-    pub fn add_target(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
+    pub fn add_target_and(
+        &mut self,
+        mut func: impl for<'e> FnMut(&mut EntityMut<'e>),
+    ) -> &mut Self {
         let id = {
             let mut spawned = self.world.spawn(());
             func(&mut spawned);
@@ -54,6 +71,8 @@ impl<'a, T> Scope<'a, T> {
         &mut self,
         mut func: impl for<'i> FnMut(&mut Scope<'i, R>),
     ) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
         let mut inner = Scope::<R> {
             top: self.last,
             last: self.last,
@@ -73,6 +92,8 @@ pub trait EntituMutExt<'a> {
 
 impl<'a> EntituMutExt<'a> for EntityMut<'a> {
     fn scope<R: Relation>(self, mut func: impl FnMut(&mut Scope<'a, R>)) -> Scope<'a> {
+        let _ = R::ZST_OR_PANIC;
+
         let mut scope = Scope {
             top: self.id(),
             last: self.id(),

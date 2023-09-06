@@ -57,6 +57,7 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
 #[derive(WorldQuery)]
 pub struct Relations<R: RelationSet> {
     pub(crate) edges: EdgeWQ,
+    pub(crate) entity: Entity,
     _filters: R::Filters,
     _phantom: PhantomData<R>,
 }
@@ -136,6 +137,7 @@ pub struct Operations<
     JoinedQueries = (),
     Traversal = (),
     Starts = (),
+    Track = (),
     Init = (),
     Fold = (),
 > {
@@ -144,6 +146,7 @@ pub struct Operations<
     joined_queries: JoinedQueries,
     traversal: PhantomData<Traversal>,
     starts: Starts,
+    track: Track,
     init: Init,
     fold: Fold,
 }
@@ -176,6 +179,7 @@ where
             joined_queries: (),
             traversal: PhantomData,
             starts: (),
+            track: (),
             init: (),
             fold: (),
         }
@@ -191,6 +195,7 @@ where
             joined_queries: (),
             traversal: PhantomData,
             starts: (),
+            track: (),
             init: (),
             fold: (),
         }
@@ -295,17 +300,16 @@ where
     fn traverse_targets<T: Relation>(self, starts: I) -> Self::TargetTraversal<T>;
 }
 
-impl<Control, JoinedTypes, JoinedQueries, E, Starts, Init, Fold> Traverse<E, Starts>
-    for Operations<Control, JoinedTypes, JoinedQueries, (), (), Init, Fold>
+impl<Control, JoinedTypes, JoinedQueries, E, Starts> Traverse<E, Starts>
+    for Operations<Control, JoinedTypes, JoinedQueries>
 where
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
 {
-    type Traversal<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, T, Starts, Init, Fold>;
+    type Traversal<T: Relation> = Operations<Control, JoinedTypes, JoinedQueries, T, Starts>;
 
     type TargetTraversal<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, Targets<T>, Starts, Init, Fold>;
+        Operations<Control, JoinedTypes, JoinedQueries, Targets<T>, Starts>;
 
     fn traverse<T: Relation>(self, starts: Starts) -> Self::Traversal<T> {
         Operations {
@@ -313,9 +317,10 @@ where
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: PhantomData,
+            starts,
+            track: self.track,
             init: self.init,
             fold: self.fold,
-            starts,
         }
     }
 
@@ -325,9 +330,10 @@ where
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: PhantomData,
+            starts,
+            track: self.track,
             init: self.init,
             fold: self.fold,
-            starts,
         }
     }
 }
@@ -362,6 +368,7 @@ where
         JoinedQueries,
         Traversal,
         Starts,
+        (),
         Init,
         Fold,
     >;
@@ -377,6 +384,7 @@ where
             joined_queries: self.joined_queries,
             traversal: self.traversal,
             starts: self.starts,
+            track: self.track,
             init,
             fold,
         }
@@ -403,6 +411,7 @@ where
         JoinedQueries,
         Traversal,
         Starts,
+        (),
         Init,
         Fold,
     >;
@@ -418,6 +427,7 @@ where
             joined_queries: self.joined_queries,
             traversal: self.traversal,
             starts: self.starts,
+            track: (),
             init,
             fold,
         }
@@ -552,6 +562,7 @@ where
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
             starts: self.starts,
+            track: self.track,
             fold: self.fold,
             init: self.init,
         }
@@ -564,6 +575,7 @@ where
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
             starts: self.starts,
+            track: self.track,
             fold: self.fold,
             init: self.init,
         }
@@ -1133,7 +1145,7 @@ where
 }
 
 impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, (), Init, Fold>
 where
     Q: WorldQuery,
     R: RelationSet,
@@ -1210,7 +1222,7 @@ where
 }
 
 impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations<0>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, (), Init, Fold>
 where
     Q: WorldQuery,
     R: RelationSet,
