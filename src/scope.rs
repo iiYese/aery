@@ -86,28 +86,27 @@ impl<'a, T> Scope<'a, T> {
     }
 }
 
-pub trait EntituMutExt<'a> {
-    fn scope<R: Relation>(self, func: impl FnMut(&mut Scope<'a, R>)) -> Scope<'a>;
+pub trait EntityMutExt<'a> {
+    fn scope<R: Relation>(&mut self, func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self;
 }
 
-impl<'a> EntituMutExt<'a> for EntityMut<'a> {
-    fn scope<R: Relation>(self, mut func: impl FnMut(&mut Scope<'a, R>)) -> Scope<'a> {
+impl<'a> EntityMutExt<'a> for EntityMut<'a> {
+    fn scope<R: Relation>(&mut self, mut func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 
-        let mut scope = Scope {
-            top: self.id(),
-            last: self.id(),
-            world: self.into_world_mut(),
-            _phantom: PhantomData,
-        };
+        let id = self.id();
 
-        func(&mut scope);
+        self.world_scope(|world| {
+            let mut scope = Scope {
+                top: id,
+                last: id,
+                world,
+                _phantom: PhantomData,
+            };
 
-        Scope {
-            top: scope.top,
-            last: scope.last,
-            world: scope.world,
-            _phantom: PhantomData,
-        }
+            func(&mut scope);
+        });
+
+        self
     }
 }
