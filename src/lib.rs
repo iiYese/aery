@@ -160,7 +160,7 @@ pub mod prelude {
         relation::{
             CheckRelations, CleanupPolicy, IterRelations, Participates, Relation, Root, ZstOrPanic,
         },
-        scope::{EntituMutExt, Scope},
+        scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
         Aery,
     };
