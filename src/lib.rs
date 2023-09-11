@@ -85,7 +85,6 @@
 
 pub mod commands;
 pub mod events;
-pub mod genealogy;
 pub mod operations;
 pub mod relation;
 pub mod scope;

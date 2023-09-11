@@ -173,6 +173,8 @@ where
     }
 }
 
+pub trait Cascadable: Sealed {}
+
 macro_rules! impl_joinable {
     ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
         impl<'a, $($P),*> Joinable<'a, { count!($($P )*) }> for ($($P,)*)
@@ -187,7 +189,7 @@ macro_rules! impl_joinable {
             )
                 -> [bool; count!($($p )*)]
             {
-                $(let [$v] = Joinable::check($p, [$e]); )*
+                $(let [$v] = Joinable::check($p, [$e]);)*
                 [$($v,)*]
             }
 
@@ -197,7 +199,7 @@ macro_rules! impl_joinable {
             )
                 -> Self::Out
             {
-                $(let $v = Joinable::join($p, [$e]); )*
+                $(let $v = Joinable::join($p, [$e]);)*
                 ($($v,)*)
             }
         }

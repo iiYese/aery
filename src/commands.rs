@@ -18,7 +18,7 @@ use std::{collections::VecDeque, marker::PhantomData};
 
 pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
     let Some(mut edges) = world.get_mut::<Edges>(entity) else {
-        return
+        return;
     };
 
     let (has_hosts, has_targets) = (
@@ -290,14 +290,14 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             .get(&RelationId::of::<R>())
             .copied()
         else {
-            return
+            return;
         };
 
         let Some(mut host_edges) = world
             .get_mut::<Edges>(self.host)
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
-            return
+            return;
         };
 
         let Some(mut target_edges) = world
@@ -305,7 +305,7 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
             world.entity_mut(self.host).insert(host_edges);
-            return
+            return;
         };
 
         host_edges.targets[R::CLEANUP_POLICY as usize]
@@ -436,7 +436,7 @@ impl Command for CheckedDespawn {
                 .get_mut(world, curr)
                 .map(|mut edges| std::mem::take(&mut *edges))
             else {
-                continue
+                continue;
             };
 
             // Total relations
@@ -445,14 +445,13 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue
+                    continue;
                 };
 
-                let Some(target_hosts) = target_edges
-                    .hosts[CleanupPolicy::Total as usize]
-                    .get_mut(typeid)
+                let Some(target_hosts) =
+                    target_edges.hosts[CleanupPolicy::Total as usize].get_mut(typeid)
                 else {
-                    continue
+                    continue;
                 };
 
                 target_hosts.remove(&curr);
@@ -468,7 +467,7 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue
+                    continue;
                 };
 
                 host_edges.targets[CleanupPolicy::Total as usize]
@@ -487,14 +486,13 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue
+                    continue;
                 };
 
-                let Some(target_hosts) = target_edges
-                    .hosts[CleanupPolicy::Recursive as usize]
-                    .get_mut(typeid)
+                let Some(target_hosts) =
+                    target_edges.hosts[CleanupPolicy::Recursive as usize].get_mut(typeid)
                 else {
-                    continue
+                    continue;
                 };
 
                 target_hosts.remove(&curr);
@@ -506,7 +504,7 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue
+                    continue;
                 };
 
                 host_edges.targets[CleanupPolicy::Recursive as usize]
@@ -525,14 +523,13 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue
+                    continue;
                 };
 
-                let Some(target_hosts) = target_edges
-                    .hosts[CleanupPolicy::Counted as usize]
-                    .get_mut(typeid)
+                let Some(target_hosts) =
+                    target_edges.hosts[CleanupPolicy::Counted as usize].get_mut(typeid)
                 else {
-                    continue
+                    continue;
                 };
 
                 target_hosts.remove(&curr);
@@ -548,7 +545,7 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue
+                    continue;
                 };
 
                 host_edges.targets[CleanupPolicy::Counted as usize]
@@ -566,7 +563,7 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
             {
                 let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue
+                    continue;
                 };
 
                 target_edges.hosts[CleanupPolicy::Orphan as usize]
@@ -583,7 +580,7 @@ impl Command for CheckedDespawn {
                 .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
             {
                 let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue
+                    continue;
                 };
 
                 host_edges.targets[CleanupPolicy::Orphan as usize]

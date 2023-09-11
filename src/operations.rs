@@ -137,7 +137,6 @@ pub struct Operations<
     JoinedQueries = (),
     Traversal = (),
     Starts = (),
-    Track = (),
     Init = (),
     Fold = (),
 > {
@@ -146,7 +145,6 @@ pub struct Operations<
     joined_queries: JoinedQueries,
     traversal: PhantomData<Traversal>,
     starts: Starts,
-    track: Track,
     init: Init,
     fold: Fold,
 }
@@ -179,7 +177,6 @@ where
             joined_queries: (),
             traversal: PhantomData,
             starts: (),
-            track: (),
             init: (),
             fold: (),
         }
@@ -195,7 +192,6 @@ where
             joined_queries: (),
             traversal: PhantomData,
             starts: (),
-            track: (),
             init: (),
             fold: (),
         }
@@ -318,7 +314,6 @@ where
             joined_queries: self.joined_queries,
             traversal: PhantomData,
             starts,
-            track: self.track,
             init: self.init,
             fold: self.fold,
         }
@@ -331,7 +326,6 @@ where
             joined_queries: self.joined_queries,
             traversal: PhantomData,
             starts,
-            track: self.track,
             init: self.init,
             fold: self.fold,
         }
@@ -368,7 +362,6 @@ where
         JoinedQueries,
         Traversal,
         Starts,
-        (),
         Init,
         Fold,
     >;
@@ -384,7 +377,6 @@ where
             joined_queries: self.joined_queries,
             traversal: self.traversal,
             starts: self.starts,
-            track: self.track,
             init,
             fold,
         }
@@ -411,7 +403,6 @@ where
         JoinedQueries,
         Traversal,
         Starts,
-        (),
         Init,
         Fold,
     >;
@@ -427,7 +418,6 @@ where
             joined_queries: self.joined_queries,
             traversal: self.traversal,
             starts: self.starts,
-            track: (),
             init,
             fold,
         }
@@ -562,7 +552,6 @@ where
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
             starts: self.starts,
-            track: self.track,
             fold: self.fold,
             init: self.init,
         }
@@ -575,7 +564,6 @@ where
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
             starts: self.starts,
-            track: self.track,
             fold: self.fold,
             init: self.init,
         }
@@ -1145,7 +1133,7 @@ where
 }
 
 impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, (), Init, Fold>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
 where
     Q: WorldQuery,
     R: RelationSet,
@@ -1222,7 +1210,7 @@ where
 }
 
 impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations<0>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, (), Init, Fold>
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
 where
     Q: WorldQuery,
     R: RelationSet,

@@ -1,21 +1,18 @@
 use crate::{
-    commands::{RelationCommands, Set},
+    commands::Set,
     relation::{Relation, ZstOrPanic},
 };
 
-use bevy::{
-    ecs::{
-        bundle::Bundle,
-        entity::Entity,
-        system::Command,
-        world::{EntityMut, World},
-    },
-    log::warn,
+use bevy::ecs::{
+    bundle::Bundle,
+    entity::Entity,
+    system::Command,
+    world::{EntityMut, World},
 };
 
 use std::marker::PhantomData;
 
-pub struct Scope<'w, T = ()> {
+pub struct Scope<'w, T: Relation> {
     top: Entity,
     last: Entity,
     world: &'w mut World,
@@ -66,7 +63,7 @@ impl<R: Relation> Scope<'_, R> {
     }
 }
 
-impl<'a, T> Scope<'a, T> {
+impl<'a, T: Relation> Scope<'a, T> {
     pub fn scope<R: Relation>(
         &mut self,
         mut func: impl for<'i> FnMut(&mut Scope<'i, R>),
