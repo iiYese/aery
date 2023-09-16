@@ -72,13 +72,13 @@ macro_rules! impl_relation_set {
 all_tuples!(impl_relation_set, 1, 15, P);
 
 pub trait Product<const N: usize> {
-    fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, N>;
+    fn product<'a>(edges: &EdgeWQItem<'a>) -> EdgeProduct<'a, N>;
 }
 
 macro_rules! impl_product {
     ($($P:ident),*) => {
         impl<$($P: EdgeQuery),*> Product<{ count!($($P )*) }> for ($($P,)*) {
-            fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, { count!($($P )*) }> {
+            fn product<'a>(edges: &EdgeWQItem<'a>) -> EdgeProduct<'a, { count!($($P )*) }> {
                 let base_iterators = [$(<$P as crate::operations::EdgeQuery>::entities(&edges),)*];
                 let live_iterators = base_iterators.clone();
                 let entities = [None::<Entity>; count!($($P )*)];
@@ -173,7 +173,7 @@ where
     }
 }
 
-pub trait Cascadable: Sealed {}
+//pub trait Cascadable: Sealed {}
 
 macro_rules! impl_joinable {
     ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
