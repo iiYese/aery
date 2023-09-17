@@ -13,6 +13,11 @@ readme = "README.md"
 
 [dependencies]
 bevy = "0.11"
-indexmap = "1.9.3"
+smallvec = "1.11.0"
 aery_macros = { path = "macros", version = "0.2.0-dev" }
+seq-macro = "0.3.5"
 aquamarine = "0.3.2"
+
+[features]
+default = ["aery"]
+aery = []

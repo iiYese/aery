@@ -1,82 +1,172 @@
-use crate::{
-    events::{CleanupEvent, TargetEvent, TargetOp},
-    relation::{CleanupPolicy, Edges, Participant, Relation, RelationId, RootMarker, ZstOrPanic},
-};
+use crate::relation::{CleanupPolicy, Relation, ZstOrPanic};
 
 use bevy::{
     ecs::{
+        component::Component,
         entity::Entity,
-        system::{Command, Resource},
+        query::{Or, With, Without, WorldQuery},
+        system::{Command, CommandQueue},
         world::{EntityMut, World},
     },
+    hierarchy::{Children, Parent},
     log::warn,
-    utils::{HashMap, HashSet},
+    prelude::{Deref, DerefMut},
 };
 
-use indexmap::IndexSet;
+use smallvec::SmallVec;
 use std::{collections::VecDeque, marker::PhantomData};
 
-pub(crate) fn refragment<R: Relation>(world: &mut World, entity: Entity) {
-    let Some(mut edges) = world.get_mut::<Edges>(entity) else {
-        return;
-    };
+// Small Stable Unique Vec
+pub(crate) struct SSUVec<T: PartialEq> {
+    pub vec: SmallVec<[T; 1]>,
+}
 
-    let (has_hosts, has_targets) = (
-        edges.hosts[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map(|hosts| !hosts.is_empty())
-            .unwrap_or(false),
-        edges.targets[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map(|targets| !targets.is_empty())
-            .unwrap_or(false),
-    );
-
-    if !has_hosts {
-        edges.hosts[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
-    }
-
-    if !has_targets {
-        edges.targets[R::CLEANUP_POLICY as usize].remove(&RelationId::of::<R>());
-    }
-
-    if edges
-        .targets
-        .iter()
-        .chain(edges.hosts.iter())
-        .all(HashMap::is_empty)
-    {
-        world.entity_mut(entity).remove::<Edges>();
-    }
-
-    match (has_hosts, has_targets) {
-        (_, true) => {
-            world
-                .entity_mut(entity)
-                .remove::<RootMarker<R>>()
-                .insert(Participant::<R> {
-                    _phantom: PhantomData,
-                });
-        }
-        (true, false) => {
-            world
-                .entity_mut(entity)
-                .remove::<Participant<R>>()
-                .insert(RootMarker::<R> {
-                    _phantom: PhantomData,
-                });
-        }
-        (false, false) => {
-            world
-                .entity_mut(entity)
-                .remove::<(Participant<R>, RootMarker<R>)>();
+impl<T: PartialEq> Default for SSUVec<T> {
+    fn default() -> Self {
+        Self {
+            vec: SmallVec::default(),
         }
     }
 }
 
-#[derive(Resource, Default)]
-pub(crate) struct RefragmentHooks {
-    hooks: HashMap<RelationId, fn(&mut World, Entity)>,
+impl<T: PartialEq> SSUVec<T> {
+    pub fn add(&mut self, val: T) {
+        if self.vec.iter().all(|item| *item != val) {
+            self.vec.push(val)
+        }
+    }
+
+    pub fn remove(&mut self, val: T) {
+        if let Some(n) = self
+            .vec
+            .iter()
+            .enumerate()
+            .find_map(|(n, item)| (*item == val).then_some(n))
+        {
+            self.vec.remove(n);
+        }
+    }
+}
+
+#[derive(Component, Deref, DerefMut)]
+pub(crate) struct Hosts<R: Relation> {
+    #[deref]
+    vec: SSUVec<Entity>,
+    _phantom: PhantomData<R>,
+}
+
+#[derive(Component, Deref, DerefMut)]
+pub(crate) struct Targets<R: Relation> {
+    #[deref]
+    vec: SSUVec<Entity>,
+    _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Default for Hosts<R> {
+    fn default() -> Self {
+        Self {
+            vec: SSUVec::default(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<R: Relation> Default for Targets<R> {
+    fn default() -> Self {
+        Self {
+            vec: SSUVec::default(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+#[derive(Component, Default, Deref, DerefMut)]
+pub(crate) struct OnDelete {
+    #[deref]
+    pub hooks: SSUVec<fn(Entity, &mut World, &mut VecDeque<Entity>)>,
+}
+
+#[derive(WorldQuery)]
+pub struct Edges<R: Relation> {
+    pub(crate) hosts: Option<&'static Hosts<R>>,
+    pub(crate) targets: Option<&'static Targets<R>>,
+    pub(crate) _filter: Or<(With<Hosts<R>>, With<Targets<R>>)>,
+}
+
+#[derive(WorldQuery)]
+pub struct HierarchyEdges {
+    pub(crate) parent: Option<&'static Parent>,
+    pub(crate) children: Option<&'static Children>,
+    pub(crate) _filter: Or<(With<Parent>, With<Children>)>,
+}
+
+/// Filter to find roots of a relationship graph for quintessential traversal.
+/// A root of any `R` is an entity that is the target of atleast 1 `R`
+/// but does not itself target any other entities with `R`.
+#[derive(WorldQuery)]
+pub struct Root<R: Relation>((With<Hosts<R>>, Without<Targets<R>>));
+
+#[derive(WorldQuery)]
+pub struct Branch<R: Relation>((With<Hosts<R>>, With<Targets<R>>));
+
+#[derive(WorldQuery)]
+pub struct Leaf<R: Relation>((Without<Hosts<R>>, With<Targets<R>>));
+
+#[derive(WorldQuery)]
+pub struct Participates<R: Relation>(Or<(With<Hosts<R>>, With<Targets<R>>)>);
+
+#[derive(WorldQuery)]
+pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
+
+// Cleanup functions go in both directions to prevent cleanup depending on if a host was
+// added/removed first or if a target was added/removed first.
+
+// For cleanup types:
+// - Orphan
+// - Counted
+pub(crate) fn unset_edges<R: Relation>(id: Entity, world: &mut World, _: &mut VecDeque<Entity>) {
+    let targets = world
+        .get_mut::<Targets<R>>(id)
+        .map(|mut targets| std::mem::take(&mut *targets))
+        .unwrap_or_default();
+
+    for target in targets.vec.vec.iter().copied() {
+        Command::apply(UnsetAsymmetric::<R>::new(id, target), world);
+    }
+
+    let hosts = world
+        .get_mut::<Hosts<R>>(id)
+        .map(|mut hosts| std::mem::take(&mut *hosts))
+        .unwrap_or_default();
+
+    for host in hosts.vec.vec.iter().copied() {
+        Command::apply(UnsetAsymmetric::<R>::new(host, id), world);
+    }
+}
+
+// For cleanup types:
+// - Recrusive
+// - Total
+pub(crate) fn clean_recursive<R: Relation>(
+    id: Entity,
+    world: &mut World,
+    queue: &mut VecDeque<Entity>,
+) {
+    let targets = world
+        .get_mut::<Targets<R>>(id)
+        .map(|mut edges| std::mem::take(&mut *edges))
+        .unwrap_or_default();
+
+    for target in targets.vec.vec.iter().copied() {
+        Command::apply(UnsetAsymmetric::<R>::new(id, target), world);
+    }
+
+    if let Some(hosts) = world
+        .get_mut::<Hosts<R>>(id)
+        .map(|mut edges| std::mem::take(&mut *edges).vec.vec)
+    {
+        queue.extend(hosts);
+    }
 }
 
 /// Command to set a relationship target for an entity. If either of the participants do not exist
@@ -85,9 +175,10 @@ pub struct Set<R>
 where
     R: Relation,
 {
-    pub host: Entity,
-    pub target: Entity,
-    pub _phantom: PhantomData<R>,
+    host: Entity,
+    target: Entity,
+    symmetric_action: bool,
+    _phantom: PhantomData<R>,
 }
 
 impl<R: Relation> Set<R> {
@@ -95,6 +186,7 @@ impl<R: Relation> Set<R> {
         Self {
             host,
             target,
+            symmetric_action: false,
             _phantom: PhantomData,
         }
     }
@@ -104,7 +196,6 @@ impl<R> Command for Set<R>
 where
     R: Relation,
 {
-    #[allow(clippy::let_unit_value)]
     fn apply(self, world: &mut World) {
         let _ = R::ZST_OR_PANIC;
 
@@ -143,71 +234,69 @@ where
             return;
         }
 
-        world
-            .resource_mut::<RefragmentHooks>()
-            .hooks
-            .insert(RelationId::of::<R>(), refragment::<R>);
-
-        let mut target_edges = world
-            .get_mut::<Edges>(self.target)
-            .map(|mut edges| std::mem::take(&mut *edges))
+        // Add cleanup
+        let mut host_cleanup = world
+            .entity_mut(self.host)
+            .get_mut::<OnDelete>()
+            .map(|mut cleanup| std::mem::take(&mut *cleanup))
             .unwrap_or_default();
 
-        target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .or_default()
-            .insert(self.host);
+        let mut target_cleanup = world
+            .entity_mut(self.target)
+            .get_mut::<OnDelete>()
+            .map(|mut cleanup| std::mem::take(&mut *cleanup))
+            .unwrap_or_default();
 
-        let symmetric_set = R::SYMMETRIC
-            && !target_edges.targets[R::CLEANUP_POLICY as usize]
-                .entry(RelationId::of::<R>())
-                .or_default()
-                .contains(&self.host);
-
-        if !target_edges.targets[R::CLEANUP_POLICY as usize].contains_key(&RelationId::of::<R>()) {
-            world.entity_mut(self.target).insert(RootMarker::<R> {
-                _phantom: PhantomData,
-            });
+        match R::CLEANUP_POLICY {
+            CleanupPolicy::Orphan | CleanupPolicy::Counted => {
+                host_cleanup.add(unset_edges::<R>);
+                target_cleanup.add(unset_edges::<R>);
+            }
+            _ => {
+                host_cleanup.add(clean_recursive::<R>);
+                target_cleanup.add(clean_recursive::<R>);
+            }
         }
 
-        world.entity_mut(self.target).insert(target_edges);
-
-        let mut host_edges = world
+        // add target
+        let mut host_targets = world
             .entity_mut(self.host)
-            .remove::<RootMarker<R>>()
-            .get_mut::<Edges>()
-            .map(|mut edges| std::mem::take(&mut *edges))
+            .get_mut::<Targets<R>>()
+            .map(|mut targets| std::mem::take(&mut *targets))
             .unwrap_or_default();
 
-        let old = host_edges.targets[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .and_then(|targets| targets.first())
-            .copied();
+        let old = host_targets.vec.vec.first().copied();
+        host_targets.add(self.target);
 
-        host_edges.targets[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .or_default()
-            .insert(self.target);
+        world
+            .entity_mut(self.host)
+            .insert(host_targets)
+            .insert(host_cleanup);
 
-        world.entity_mut(self.host).insert((
-            host_edges,
-            Participant::<R> {
-                _phantom: PhantomData,
-            },
-        ));
+        // add host
+        let mut target_hosts = world
+            .entity_mut(self.target)
+            .get_mut::<Hosts<R>>()
+            .map(|mut hosts| std::mem::take(&mut *hosts))
+            .unwrap_or_default();
 
-        world.send_event(TargetEvent {
-            host: self.host,
-            target_op: TargetOp::Set,
-            target: self.target,
-            relation_id: RelationId::of::<R>(),
-        });
+        target_hosts.vec.add(self.host);
 
-        if symmetric_set {
+        world
+            .entity_mut(self.target)
+            .insert(target_hosts)
+            .insert(target_cleanup);
+
+        // TODO: Events
+
+        // Symmetric set has to happen before exclusivity unset otherwise
+        // an entity can get despawned when it shouldn't.
+        if R::SYMMETRIC && !self.symmetric_action {
             Command::apply(
                 Set::<R> {
                     host: self.target,
                     target: self.host,
+                    symmetric_action: true,
                     _phantom: PhantomData,
                 },
                 world,
@@ -234,9 +323,9 @@ pub struct Unset<R>
 where
     R: Relation,
 {
-    pub host: Entity,
-    pub target: Entity,
-    pub _phantom: PhantomData<R>,
+    host: Entity,
+    target: Entity,
+    _phantom: PhantomData<R>,
 }
 
 impl<R: Relation> Unset<R> {
@@ -250,28 +339,11 @@ impl<R: Relation> Unset<R> {
 }
 
 impl<R: Relation> Command for Unset<R> {
-    #[allow(clippy::let_unit_value)]
     fn apply(self, world: &mut World) {
-        let _ = R::ZST_OR_PANIC;
-
-        Command::apply(
-            UnsetAsymmetric::<R> {
-                host: self.host,
-                target: self.target,
-                _phantom: PhantomData,
-            },
-            world,
-        );
+        Command::apply(UnsetAsymmetric::<R>::new(self.host, self.target), world);
 
         if R::SYMMETRIC {
-            Command::apply(
-                UnsetAsymmetric::<R> {
-                    host: self.target,
-                    target: self.host,
-                    _phantom: PhantomData,
-                },
-                world,
-            );
+            Command::apply(UnsetAsymmetric::<R>::new(self.target, self.host), world);
         }
     }
 }
@@ -282,335 +354,104 @@ struct UnsetAsymmetric<R: Relation> {
     _phantom: PhantomData<R>,
 }
 
+impl<R: Relation> UnsetAsymmetric<R> {
+    pub fn new(host: Entity, target: Entity) -> Self {
+        Self {
+            host,
+            target,
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<R: Relation> Command for UnsetAsymmetric<R> {
     fn apply(self, world: &mut World) {
-        let Some(refragment) = world
-            .resource::<RefragmentHooks>()
-            .hooks
-            .get(&RelationId::of::<R>())
-            .copied()
-        else {
-            return;
-        };
-
-        let Some(mut host_edges) = world
-            .get_mut::<Edges>(self.host)
+        let Some(mut host_targets) = world
+            .get_mut::<Targets<R>>(self.host)
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
             return;
         };
 
-        let Some(mut target_edges) = world
-            .get_mut::<Edges>(self.target)
+        let Some(mut target_hosts) = world
+            .get_mut::<Hosts<R>>(self.target)
             .map(|mut edges| std::mem::take(&mut *edges))
         else {
-            world.entity_mut(self.host).insert(host_edges);
+            world.entity_mut(self.host).insert(host_targets);
             return;
         };
 
-        host_edges.targets[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .and_modify(|hosts| {
-                hosts.remove(&self.target);
-            });
+        // Remove edges from containers
+        host_targets.remove(self.target);
+        target_hosts.remove(self.host);
 
-        target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .entry(RelationId::of::<R>())
-            .and_modify(|hosts| {
-                hosts.remove(&self.host);
-            });
+        // Check & resinsert containers
+        if !host_targets.vec.vec.is_empty() {
+            world.entity_mut(self.host).insert(host_targets);
+        } else {
+            let mut host = world.entity_mut(self.host);
+            host.remove::<Targets<R>>();
 
-        let target_orphaned = target_edges.hosts[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map_or(false, IndexSet::is_empty);
+            let mut cleanup = host
+                .get_mut::<OnDelete>()
+                .map(|mut cleanup| std::mem::take(&mut *cleanup))
+                .unwrap_or_default();
 
-        world.entity_mut(self.host).insert(host_edges);
-        world.entity_mut(self.target).insert(target_edges);
+            if host.get::<Targets<R>>().is_none() {
+                cleanup.remove(match R::CLEANUP_POLICY {
+                    CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
+                    CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+                })
+            }
 
-        if target_orphaned
-            && matches!(
-                R::CLEANUP_POLICY,
-                CleanupPolicy::Counted | CleanupPolicy::Total
-            )
-        {
-            Command::apply(
-                CheckedDespawn {
-                    entity: self.target,
-                },
-                world,
-            );
+            if cleanup.vec.is_empty() {
+                host.remove::<OnDelete>();
+            } else {
+                host.insert(cleanup);
+            }
         }
 
-        world.send_event(TargetEvent {
-            host: self.host,
-            target_op: TargetOp::Unset,
-            target: self.target,
-            relation_id: RelationId::of::<R>(),
-        });
+        if !target_hosts.vec.vec.is_empty() {
+            world.entity_mut(self.target).insert(target_hosts);
+        } else if matches!(
+            R::CLEANUP_POLICY,
+            CleanupPolicy::Counted | CleanupPolicy::Total
+        ) {
+            Command::apply(CheckedDespawn(self.target), world);
+        } else {
+            let mut target = world.entity_mut(self.target);
+            target.remove::<Hosts<R>>();
 
-        refragment(world, self.host);
-        refragment(world, self.target);
-    }
-}
+            let mut cleanup = target
+                .get_mut::<OnDelete>()
+                .map(|mut cleanup| std::mem::take(&mut *cleanup))
+                .unwrap_or_default();
 
-/// Command for entities to untarget all of their relations of a given type.
-pub struct UnsetAll<R>
-where
-    R: Relation,
-{
-    pub entity: Entity,
-    pub _phantom: PhantomData<R>,
-}
+            if target.get::<Targets<R>>().is_none() {
+                cleanup.remove(match R::CLEANUP_POLICY {
+                    CleanupPolicy::Orphan => unset_edges::<R>,
+                    CleanupPolicy::Recursive => clean_recursive::<R>,
+                    _ => unreachable!(),
+                })
+            }
 
-impl<R: Relation> Command for UnsetAll<R> {
-    #[allow(clippy::let_unit_value)]
-    fn apply(self, world: &mut World) {
-        while let Some(target) = world
-            .get::<Edges>(self.entity)
-            .and_then(|edges| edges.targets[R::CLEANUP_POLICY as usize].get(&RelationId::of::<R>()))
-            .and_then(|targets| targets.first())
-            .copied()
-        {
-            let _ = R::ZST_OR_PANIC;
-
-            Command::apply(
-                Unset::<R> {
-                    target,
-                    host: self.entity,
-                    _phantom: PhantomData,
-                },
-                world,
-            );
+            if cleanup.vec.is_empty() {
+                target.remove::<OnDelete>();
+            } else {
+                target.insert(cleanup);
+            }
         }
-    }
-}
 
-/// Command for entities to remove themselves as the target of all relations of a given type.
-pub struct Withdraw<R>
-where
-    R: Relation,
-{
-    pub entity: Entity,
-    pub _phantom: PhantomData<R>,
-}
-
-impl<R: Relation> Command for Withdraw<R> {
-    #[allow(clippy::let_unit_value)]
-    fn apply(self, world: &mut World) {
-        while let Some(host) = world
-            .get::<Edges>(self.entity)
-            .and_then(|edges| edges.hosts[R::CLEANUP_POLICY as usize].get(&RelationId::of::<R>()))
-            .and_then(|targets| targets.first())
-            .copied()
-        {
-            let _ = R::ZST_OR_PANIC;
-
-            Command::apply(
-                Unset::<R> {
-                    host,
-                    target: self.entity,
-                    _phantom: PhantomData,
-                },
-                world,
-            );
-        }
+        // TODO: Events
     }
 }
 
 /// Command to despawn entities with rleations. Despawning via any other method can lead to
 /// dangling which will not produce correct behavior!
-pub struct CheckedDespawn {
-    pub entity: Entity,
-}
+pub struct CheckedDespawn(pub Entity);
 
 impl Command for CheckedDespawn {
-    fn apply(self, world: &mut World) {
-        let mut to_refrag = HashMap::<RelationId, HashSet<Entity>>::new();
-        let mut to_despawn = HashSet::<Entity>::from([self.entity]);
-        let mut queue = VecDeque::from([self.entity]);
-
-        let mut graph = world.query::<&mut Edges>();
-
-        while let Some(curr) = queue.pop_front() {
-            let Ok(edges) = graph
-                .get_mut(world, curr)
-                .map(|mut edges| std::mem::take(&mut *edges))
-            else {
-                continue;
-            };
-
-            // Total relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Total as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
-            {
-                let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue;
-                };
-
-                let Some(target_hosts) =
-                    target_edges.hosts[CleanupPolicy::Total as usize].get_mut(typeid)
-                else {
-                    continue;
-                };
-
-                target_hosts.remove(&curr);
-
-                if target_hosts.is_empty() {
-                    queue.push_back(*target);
-                    to_despawn.insert(*target);
-                }
-            }
-
-            for (typeid, host) in edges.hosts[CleanupPolicy::Total as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
-            {
-                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue;
-                };
-
-                host_edges.targets[CleanupPolicy::Total as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
-
-                queue.push_back(*host);
-                to_despawn.insert(*host);
-            }
-
-            // Recursive relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Recursive as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
-            {
-                let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue;
-                };
-
-                let Some(target_hosts) =
-                    target_edges.hosts[CleanupPolicy::Recursive as usize].get_mut(typeid)
-                else {
-                    continue;
-                };
-
-                target_hosts.remove(&curr);
-                to_refrag.entry(*typeid).or_default().insert(*target);
-            }
-
-            for (typeid, host) in edges.hosts[CleanupPolicy::Recursive as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
-            {
-                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue;
-                };
-
-                host_edges.targets[CleanupPolicy::Recursive as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
-
-                queue.push_back(*host);
-                to_despawn.insert(*host);
-            }
-
-            // Counted relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Counted as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
-            {
-                let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue;
-                };
-
-                let Some(target_hosts) =
-                    target_edges.hosts[CleanupPolicy::Counted as usize].get_mut(typeid)
-                else {
-                    continue;
-                };
-
-                target_hosts.remove(&curr);
-
-                if target_hosts.is_empty() {
-                    queue.push_back(*target);
-                    to_despawn.insert(*target);
-                }
-            }
-
-            for (typeid, host) in edges.hosts[CleanupPolicy::Counted as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
-            {
-                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue;
-                };
-
-                host_edges.targets[CleanupPolicy::Counted as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
-
-                to_refrag.entry(*typeid).or_default().insert(*host);
-            }
-
-            // Orphaning relations
-            for (typeid, target) in edges.targets[CleanupPolicy::Orphan as usize]
-                .iter()
-                .flat_map(|(typeid, targets)| targets.iter().map(move |target| (typeid, target)))
-            {
-                let Ok(mut target_edges) = graph.get_mut(world, *target) else {
-                    continue;
-                };
-
-                target_edges.hosts[CleanupPolicy::Orphan as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
-
-                to_refrag.entry(*typeid).or_default().insert(*target);
-            }
-
-            for (typeid, host) in edges.hosts[CleanupPolicy::Orphan as usize]
-                .iter()
-                .flat_map(|(typeid, hosts)| hosts.iter().map(move |host| (typeid, host)))
-            {
-                let Ok(mut host_edges) = graph.get_mut(world, *host) else {
-                    continue;
-                };
-
-                host_edges.targets[CleanupPolicy::Orphan as usize]
-                    .entry(*typeid)
-                    .and_modify(|bucket| {
-                        bucket.remove(&curr);
-                    });
-
-                to_refrag.entry(*typeid).or_default().insert(*host);
-            }
-        }
-
-        for entity in to_despawn {
-            world.despawn(entity);
-            world.send_event(CleanupEvent { entity });
-        }
-
-        for (typeid, entities) in to_refrag {
-            let refrag = world
-                .resource::<RefragmentHooks>()
-                .hooks
-                .get(&typeid)
-                .copied()
-                .unwrap();
-
-            for entity in entities {
-                refrag(world, entity);
-            }
-        }
-    }
+    fn apply(self, world: &mut World) {}
 }
 
 /// An extension API for `EntityMut<'_>` to sugar using relation commands.
@@ -628,111 +469,10 @@ impl Command for CheckedDespawn {
 pub trait RelationCommands<'a>: Sized {
     fn set<R: Relation>(self, target: Entity) -> Option<EntityMut<'a>>;
     fn unset<R: Relation>(self, target: Entity) -> Option<EntityMut<'a>>;
-    fn unset_all<R: Relation>(self) -> Option<EntityMut<'a>>;
-    fn withdraw<R: Relation>(self) -> Option<EntityMut<'a>>;
     fn checked_despawn(self);
 }
 
-#[rustfmt::skip]
-#[allow(clippy::let_unit_value)]
-impl<'a> RelationCommands<'a> for EntityMut<'a> {
-    fn set<R: Relation>(self, target: Entity) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let id = self.id();
-        let world = self.into_world_mut();
-
-        Command::apply(
-            Set::<R> { host: id, target, _phantom: PhantomData },
-            world,
-        );
-
-        world.get_entity_mut(id)
-    }
-
-    fn unset<R: Relation>(self, target: Entity) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let id = self.id();
-        let world = self.into_world_mut();
-
-        Command::apply(
-            Unset::<R> { host: id, target, _phantom: PhantomData },
-            world,
-        );
-
-        world.get_entity_mut(id)
-    }
-
-    fn unset_all<R: Relation>(self) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let id = self.id();
-        let world = self.into_world_mut();
-
-        Command::apply(
-            UnsetAll::<R> { entity: id, _phantom: PhantomData },
-            world,
-        );
-
-        world.get_entity_mut(id)
-    }
-
-    fn withdraw<R: Relation>(self) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let id = self.id();
-        let world = self.into_world_mut();
-
-        Command::apply(
-            Withdraw::<R> { entity: id, _phantom: PhantomData },
-            world,
-        );
-
-        world.get_entity_mut(id)
-    }
-
-    fn checked_despawn(self) {
-        let id = self.id();
-        let world = self.into_world_mut();
-        Command::apply(CheckedDespawn { entity: id }, world);
-    }
-}
-
-impl<'a> RelationCommands<'a> for Option<EntityMut<'a>> {
-    fn set<R: Relation>(self, target: Entity) -> Self {
-        match self {
-            Some(entity_mut) => entity_mut.set::<R>(target),
-            None => {
-                warn!("Tried to set relation on an entity that doesn't exist. Ignoring.",);
-                None
-            }
-        }
-    }
-
-    // Unsetting an entity that doesn't exist is not considered an error
-    fn unset<R: Relation>(self, target: Entity) -> Self {
-        self.and_then(|entity_mut| entity_mut.unset::<R>(target))
-    }
-
-    // Unsetting an entity that doesn't exist is not considered an error
-    fn unset_all<R: Relation>(self) -> Self {
-        self.and_then(|entity_mut| entity_mut.unset_all::<R>())
-    }
-
-    // Unsetting an entity that doesn't exist is not considered an error
-    fn withdraw<R: Relation>(self) -> Self {
-        self.and_then(|entity_mut| entity_mut.withdraw::<R>())
-    }
-
-    fn checked_despawn(self) {
-        if let Some(entity_mut) = self {
-            entity_mut.checked_despawn()
-        }
-    }
-}
-
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{self as aery, prelude::*};
@@ -1285,4 +1025,4 @@ mod tests {
 
         test.assert_cleaned(&world);
     }
-}
+}*/

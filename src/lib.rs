@@ -83,14 +83,14 @@
 //! }
 //! ```
 
-pub mod commands;
-pub mod events;
-pub mod operations;
+pub mod edges;
+//pub mod events;
+//pub mod operations;
 pub mod relation;
-pub mod scope;
+//pub mod scope;
 pub mod tuple_traits;
 
-use commands::RefragmentHooks;
+/*use commands::RefragmentHooks;
 use events::{CleanupEvent, TargetEvent};
 
 use bevy::{
@@ -164,4 +164,4 @@ pub mod prelude {
         Aery,
     };
     pub use aery_macros::*;
-}
+}*/

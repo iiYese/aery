@@ -1,64 +1,19 @@
-use crate::Var;
+use crate::tuple_traits::{PadMax, RelationSet};
 
-use bevy::{
-    ecs::{
-        component::Component,
-        entity::Entity,
-        query::{Or, With, Without, WorldQuery},
-        world::{EntityMut, EntityRef},
-    },
-    utils::HashMap,
-};
+use bevy::ecs::query::{ReadOnlyWorldQuery, WorldQuery};
 
-use core::any::TypeId;
-use indexmap::IndexSet;
-use std::marker::PhantomData;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RelationId(TypeId);
-
-impl RelationId {
-    pub fn of<R: Relation>() -> Self {
-        Self(TypeId::of::<R>())
-    }
+/// Hack to ensure relation types are indeed ZSTs
+pub trait ZstOrPanic: Sized {
+    const ZST_OR_PANIC: () = {
+        // TODO: Make diagnostic friendlier when `std::any::type_name` becomes const
+        // TODO: Use actual type level mechanism and remove hack when possible in stable
+        if std::mem::size_of::<Self>() != 0 {
+            panic!("Not a ZST")
+        }
+    };
 }
 
-impl<R: Relation> From<R> for Var<RelationId> {
-    fn from(_: R) -> Self {
-        let _ = R::ZST_OR_PANIC;
-        Self::Val(RelationId::of::<R>())
-    }
-}
-
-#[derive(Component)]
-pub(crate) struct RootMarker<R: Relation> {
-    pub _phantom: PhantomData<R>,
-}
-
-#[derive(Component)]
-pub(crate) struct Participant<R: Relation> {
-    pub _phantom: PhantomData<R>,
-}
-
-/// Filter to find roots of a relationship graph for quintessential traversal.
-/// A root of any `R` is an entity that is the target of atleast 1 `R`
-/// but does not itself target any other entities with `R`.
-#[derive(WorldQuery)]
-pub struct Root<R: Relation> {
-    filter: With<RootMarker<R>>,
-}
-
-/// Filter to find any participants of a relationship.
-#[derive(WorldQuery)]
-pub struct Participates<R: Relation> {
-    filter: Or<(With<Participant<R>>, With<RootMarker<R>>)>,
-}
-
-/// Filter to find entities that are not hosts or targets of a relationship.
-#[derive(WorldQuery)]
-pub struct Abstains<R: Relation> {
-    filter: (Without<Participant<R>>, Without<RootMarker<R>>),
-}
+impl<T> ZstOrPanic for T {}
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// Supported cleanup patterns. When entities have multiple relations with different cleanup
@@ -122,7 +77,7 @@ pub struct Abstains<R: Relation> {
 ///
 /// E6 --R--> E2
 /// ```
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CleanupPolicy {
     /// Will do no further cleanup.
     Orphan,
@@ -138,19 +93,6 @@ pub enum CleanupPolicy {
     /// Total performs both counted and recursive cleanup.
     Total,
 }
-
-/// Hack to ensure relation types are indeed ZSTs
-pub trait ZstOrPanic: Sized {
-    const ZST_OR_PANIC: () = {
-        // TODO: Make diagnostic friendlier when `std::any::type_name` becomes const
-        // TODO: Use actual type level mechanism and remove hack when possible in stable
-        if std::mem::size_of::<Self>() != 0 {
-            panic!("Not a ZST")
-        }
-    };
-}
-
-impl<T> ZstOrPanic for T {}
 
 /// The relation trait. This is what controls the cleanup, exclusivity & symmetry of a relation.
 /// Relations can be thought of as arrows. The terms Aery uses for the base and head of this arrow
@@ -185,294 +127,19 @@ pub trait Relation: 'static + Sized + Send + Sync {
     const SYMMETRIC: bool = false;
 }
 
-#[derive(Component, Default, Debug)]
-pub(crate) struct Edges {
-    pub hosts: [HashMap<RelationId, IndexSet<Entity>>; 4],
-    pub targets: [HashMap<RelationId, IndexSet<Entity>>; 4],
-}
-
+/// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
+/// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
+/// to use relation operations and no type may appear more than once for operations to work.*
+/// See [`AeryQueryExt`] for operations.
 #[derive(WorldQuery)]
-pub struct EdgeWQ {
-    pub(crate) edges: &'static Edges,
+pub struct Relations<R>
+where
+    R: RelationSet,
+    R::Edges: PadMax,
+    <R::Edges as PadMax>::Padded: ReadOnlyWorldQuery,
+{
+    pub(crate) edges: <R::Edges as PadMax>::Padded,
 }
 
-/// Trait to check what relations exist.
-pub trait CheckRelations {
-    /// Check if another entity is targeting this one via a relation.
-    /// ```
-    ///# use bevy::prelude::*;
-    ///# use aery::{prelude::*, relation::EdgeWQItem};
-    ///#
-    ///# #[derive(Relation)]
-    ///# struct R;
-    ///#
-    ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
-    /// // Check if entity is the target of `e` via `R`
-    /// entity.has_host(R, e);
-    ///
-    /// // Check if entity is the target of any entity via `R`
-    /// entity.has_host(R, Wc);
-    ///
-    /// // Check if entity is the target of any entity via any relationship
-    /// entity.has_host(Wc, Wc);
-    ///# }
-    /// ```
-    fn has_host(&self, relation: impl Into<Var<RelationId>>, host: impl Into<Var<Entity>>) -> bool;
-
-    /// Check if entity is targeting another via a relation.
-    /// ```
-    ///# use bevy::prelude::*;
-    ///# use aery::{prelude::*, relation::EdgeWQItem};
-    ///#
-    ///# #[derive(Relation)]
-    ///# struct R;
-    ///#
-    ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
-    /// // Check if entity targets `e` via `R`
-    /// entity.has_target(R, e);
-    ///
-    /// // Check if entity targets of any other entity via `R`
-    /// entity.has_target(R, Wc);
-    ///
-    /// // Check if entity targets of any other entity via any relationship
-    /// entity.has_target(Wc, Wc);
-    ///# }
-    /// ```
-    fn has_target(
-        &self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    ) -> bool;
-}
-
-#[rustfmt::skip]
-impl CheckRelations for Edges {
-    fn has_host(&self, relation: impl Into<Var<RelationId>>, host: impl Into<Var<Entity>>) -> bool {
-        match (relation.into(), host.into()) {
-            (Var::Val(rel), Var::Val(host)) => self
-                .hosts
-                .iter()
-                .any(|map| map.get(&rel).filter(|set| set.contains(&host)).is_some()),
-            (Var::Val(rel), Var::Wc) => self
-                .hosts
-                .iter()
-                .any(|map| map.get(&rel).is_some()),
-            (Var::Wc, Var::Val(host)) => self
-                .hosts
-                .iter()
-                .flat_map(|map| map.values())
-                .any(|set| set.contains(&host)),
-            (Var::Wc, Var::Wc) => self
-                .hosts
-                .iter()
-                .flat_map(|map| map.keys())
-                .next()
-                .is_some(),
-        }
-    }
-
-    fn has_target(&self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    )
-        -> bool
-    {
-        match (relation.into(), target.into()) {
-            (Var::Val(rel), Var::Val(target)) => self
-                .targets
-                .iter()
-                .any(|map| map.get(&rel).filter(|set| set.contains(&target)).is_some()),
-            (Var::Val(rel), Var::Wc) => self
-                .targets
-                .iter()
-                .any(|map| map.get(&rel).is_some()),
-            (Var::Wc, Var::Val(target)) => self
-                .targets
-                .iter()
-                .flat_map(|map| map.values())
-                .any(|set| set.contains(&target)),
-            (Var::Wc, Var::Wc) => self
-                .targets
-                .iter()
-                .flat_map(|map| map.keys())
-                .next()
-                .is_some(),
-        }
-    }
-}
-
-impl CheckRelations for EdgeWQItem<'_> {
-    fn has_host(&self, relation: impl Into<Var<RelationId>>, host: impl Into<Var<Entity>>) -> bool {
-        self.edges.has_host(relation, host)
-    }
-
-    fn has_target(
-        &self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    ) -> bool {
-        self.edges.has_target(relation, target)
-    }
-}
-
-impl CheckRelations for EntityRef<'_> {
-    fn has_host(
-        &self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    ) -> bool {
-        self.get::<Edges>()
-            .map_or(false, |edges| edges.has_host(relation, target))
-    }
-
-    fn has_target(
-        &self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    ) -> bool {
-        self.get::<Edges>()
-            .map_or(false, |edges| edges.has_target(relation, target))
-    }
-}
-
-impl CheckRelations for EntityMut<'_> {
-    fn has_host(
-        &self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    ) -> bool {
-        self.get::<Edges>()
-            .map_or(false, |edges| edges.has_host(relation, target))
-    }
-
-    fn has_target(
-        &self,
-        relation: impl Into<Var<RelationId>>,
-        target: impl Into<Var<Entity>>,
-    ) -> bool {
-        self.get::<Edges>()
-            .map_or(false, |edges| edges.has_target(relation, target))
-    }
-}
-
-/// Trait to iterate all hosts or targets of an entity's given [`Relation`].
-pub trait IterRelations {
-    /// The iterator type returned by `iter_hosts` and `iter_targets`.
-    type Entities<'a>: Iterator<Item = Entity>
-    where
-        Self: 'a;
-
-    /// Return all entities that target this entity with the given [`Relation`] `R`.
-    /// ```
-    ///# use bevy::prelude::*;
-    ///# use aery::{prelude::*, relation::EdgeWQItem};
-    ///#
-    ///# #[derive(Relation)]
-    ///# struct R;
-    ///#
-    ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
-    /// for host in entity.iter_hosts::<R>() {
-    ///     // You could use the entity in a `query.get`, for example.
-    ///     // It's like a generic version of bevy's `&Children` query param.
-    /// }
-    ///# }
-    /// ```
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_>;
-
-    /// Return all entities that this entity targets with the given [`Relation`] `R`.
-    /// ```
-    ///# use bevy::prelude::*;
-    ///# use aery::{prelude::*, relation::EdgeWQItem};
-    ///#
-    ///# #[derive(Relation)]
-    ///# struct R;
-    ///#
-    ///# fn foo(entity: EdgeWQItem<'_>, e: Entity) {
-    /// for target in entity.iter_targets::<R>() {
-    ///     // You could use the entity in a `query.get`, for example.
-    ///     // It's like a generic version of bevy's `&Parent` query param.
-    /// }
-    ///# }
-    /// ```
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_>;
-}
-
-pub(crate) type EdgeIter<'a> = std::iter::Flatten<
-    std::option::IntoIter<std::iter::Copied<indexmap::set::Iter<'a, bevy::prelude::Entity>>>,
->;
-
-impl IterRelations for Edges {
-    type Entities<'a> = EdgeIter<'a>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
-        self.hosts[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map(|hosts| hosts.iter().copied())
-            .into_iter()
-            .flatten()
-    }
-
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
-        self.targets[R::CLEANUP_POLICY as usize]
-            .get(&RelationId::of::<R>())
-            .map(|targets| targets.iter().copied())
-            .into_iter()
-            .flatten()
-    }
-}
-
-impl IterRelations for EdgeWQItem<'_> {
-    type Entities<'a> = EdgeIter<'a>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
-        self.edges.iter_hosts::<R>()
-    }
-
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
-        self.edges.iter_targets::<R>()
-    }
-}
-
-impl IterRelations for EntityRef<'_> {
-    type Entities<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
-        self.get::<Edges>()
-            .map(|edges| edges.iter_hosts::<R>())
-            .into_iter()
-            .flatten()
-    }
-
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
-        self.get::<Edges>()
-            .map(|edges| edges.iter_targets::<R>())
-            .into_iter()
-            .flatten()
-    }
-}
-
-impl IterRelations for EntityMut<'_> {
-    type Entities<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
-        self.get::<Edges>()
-            .map(|edges| edges.iter_hosts::<R>())
-            .into_iter()
-            .flatten()
-    }
-
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
-        self.get::<Edges>()
-            .map(|edges| edges.iter_targets::<R>())
-            .into_iter()
-            .flatten()
-    }
-}
+/// For hierarchy compatibility
+pub struct Hierarchy;
