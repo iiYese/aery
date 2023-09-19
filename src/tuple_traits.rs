@@ -1,5 +1,5 @@
 use crate::{
-    edges::{Edges, Hosts, Targets},
+    edges::Edges,
     //operations::EdgeProduct,
     relation::Relation,
 };
@@ -9,7 +9,7 @@ use seq_macro::seq;
 use bevy::{
     ecs::{
         entity::Entity,
-        query::{AnyOf, ReadOnlyWorldQuery, WorldQuery},
+        query::{ReadOnlyWorldQuery, WorldQuery},
         system::Query,
     },
     utils::all_tuples,

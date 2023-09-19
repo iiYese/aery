@@ -83,6 +83,11 @@
 //! }
 //! ```
 
+use bevy::{
+    app::{App, Plugin},
+    ecs::entity::Entity,
+};
+
 pub mod edges;
 //pub mod events;
 //pub mod operations;
@@ -93,10 +98,6 @@ pub mod tuple_traits;
 /*use commands::RefragmentHooks;
 use events::{CleanupEvent, TargetEvent};
 
-use bevy::{
-    app::{App, Plugin},
-    ecs::entity::Entity,
-};
 
 /// A type to enable wildcard APIs
 pub enum Var<T> {
@@ -135,33 +136,31 @@ impl From<Entity> for Var<Entity> {
     fn from(value: Entity) -> Self {
         Self::Val(value)
     }
-}
+}*/
 
 pub struct Aery;
 
 impl Plugin for Aery {
     fn build(&self, app: &mut App) {
-        app.init_resource::<RefragmentHooks>()
-            .add_event::<TargetEvent>()
-            .add_event::<CleanupEvent>();
+        app;
+        //.add_event::<TargetEvent>()
+        //.add_event::<CleanupEvent>();
     }
 }
 
 pub mod prelude {
-    pub use super::Var::{self, Wc};
+    //pub use super::Var::{self, Wc};
     pub use crate::{
-        commands::{RelationCommands, Set, Unset},
-        events::{TargetEvent, TargetOp},
-        operations::{
+        edges::{RelationCommands, Set, Unset},
+        //events::{TargetEvent, TargetOp},
+        /*operations::{
             AeryQueryExt, ControlFlow, EdgeQuery, FoldBreadth, ForEachPermutations,
             ForEachPermutations3Arity, Join, Relations, Targets, Traverse,
-        },
-        relation::{
-            CheckRelations, CleanupPolicy, IterRelations, Participates, Relation, Root, ZstOrPanic,
-        },
-        scope::{EntityMutExt, Scope},
+        },*/
+        relation::{CleanupPolicy, Relation, ZstOrPanic},
+        //scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
         Aery,
     };
     pub use aery_macros::*;
-}*/
+}
