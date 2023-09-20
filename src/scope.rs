@@ -12,7 +12,7 @@ use bevy::ecs::{
 
 use std::marker::PhantomData;
 
-pub struct Scope<'w, T: Relation> {
+pub struct Scope<'w, T> {
     top: Entity,
     last: Entity,
     world: &'w mut World,
