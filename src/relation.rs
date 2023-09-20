@@ -1,6 +1,25 @@
-use crate::tuple_traits::{PadMax, RelationSet};
-
+use crate::{
+    tuple_traits::{PadMax, RelationSet},
+    Var,
+};
 use bevy::ecs::query::{ReadOnlyWorldQuery, WorldQuery};
+use core::any::TypeId;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RelationId(TypeId);
+
+impl RelationId {
+    pub fn of<R: Relation>() -> Self {
+        Self(TypeId::of::<R>())
+    }
+}
+
+impl<R: Relation> From<R> for Var<RelationId> {
+    fn from(_: R) -> Self {
+        let _ = R::ZST_OR_PANIC;
+        Self::Val(RelationId::of::<R>())
+    }
+}
 
 /// Hack to ensure relation types are indeed ZSTs
 pub trait ZstOrPanic: Sized {
@@ -141,5 +160,6 @@ where
     pub(crate) edges: <R::Edges as PadMax>::Padded,
 }
 
-/// For hierarchy compatibility
-pub struct Hierarchy;
+// TODO: Enable for 0.12
+// For hierarchy compatibility
+//pub struct Hierarchy;

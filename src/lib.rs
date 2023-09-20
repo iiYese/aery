@@ -89,15 +89,13 @@ use bevy::{
 };
 
 pub mod edges;
-//pub mod events;
+pub mod events;
 //pub mod operations;
 pub mod relation;
 //pub mod scope;
 pub mod tuple_traits;
 
-/*use commands::RefragmentHooks;
 use events::{CleanupEvent, TargetEvent};
-
 
 /// A type to enable wildcard APIs
 pub enum Var<T> {
@@ -136,15 +134,13 @@ impl From<Entity> for Var<Entity> {
     fn from(value: Entity) -> Self {
         Self::Val(value)
     }
-}*/
+}
 
 pub struct Aery;
 
 impl Plugin for Aery {
     fn build(&self, app: &mut App) {
-        app;
-        //.add_event::<TargetEvent>()
-        //.add_event::<CleanupEvent>();
+        app.add_event::<TargetEvent>().add_event::<CleanupEvent>();
     }
 }
 
@@ -152,7 +148,7 @@ pub mod prelude {
     //pub use super::Var::{self, Wc};
     pub use crate::{
         edges::{RelationCommands, Set, Unset},
-        //events::{TargetEvent, TargetOp},
+        events::{CleanupEvent, Op, TargetEvent},
         /*operations::{
             AeryQueryExt, ControlFlow, EdgeQuery, FoldBreadth, ForEachPermutations,
             ForEachPermutations3Arity, Join, Relations, Targets, Traverse,

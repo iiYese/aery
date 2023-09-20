@@ -1,4 +1,7 @@
-use crate::relation::{CleanupPolicy, Relation, ZstOrPanic};
+use crate::{
+    events::{CleanupEvent, Op, TargetEvent},
+    relation::{CleanupPolicy, Relation, RelationId, ZstOrPanic},
+};
 
 use bevy::{
     ecs::{
@@ -8,7 +11,7 @@ use bevy::{
         system::{Command, CommandQueue, Resource},
         world::{EntityMut, World},
     },
-    hierarchy::{Children, Parent},
+    //hierarchy::{Children, Parent},
     log::warn,
     prelude::{Deref, DerefMut},
 };
@@ -80,10 +83,11 @@ impl<R: Relation> Default for Targets<R> {
     }
 }
 
-#[derive(Component, Default, Deref, DerefMut)]
-pub(crate) struct OnDelete {
-    #[deref]
-    pub hooks: SSUVec<fn(Entity, &mut World)>,
+pub trait EdgeInfo {
+    fn hosts(&self) -> &[Entity];
+    fn targets(&mut self) -> &[Entity];
+    fn has_host(&self, entity: Entity) -> bool;
+    fn has_target(&self, entity: Entity) -> bool;
 }
 
 #[derive(WorldQuery)]
@@ -93,16 +97,59 @@ pub struct Edges<R: Relation> {
     pub(crate) _filter: Or<(With<Hosts<R>>, With<Targets<R>>)>,
 }
 
-#[derive(WorldQuery)]
-pub struct HierarchyEdges {
-    pub(crate) parent: Option<&'static Parent>,
-    pub(crate) children: Option<&'static Children>,
-    pub(crate) _filter: Or<(With<Parent>, With<Children>)>,
+impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
+    fn hosts(&self) -> &[Entity] {
+        match self.hosts {
+            Some(hosts) => &hosts.vec.vec,
+            None => &[],
+        }
+    }
+
+    fn targets(&mut self) -> &[Entity] {
+        match self.targets {
+            Some(targets) => &targets.vec.vec,
+            None => &[],
+        }
+    }
+
+    fn has_host(&self, e: Entity) -> bool {
+        self.hosts.map_or(false, |vec| vec.vec.vec.contains(&e))
+    }
+
+    fn has_target(&self, e: Entity) -> bool {
+        self.targets.map_or(false, |vec| vec.vec.vec.contains(&e))
+    }
 }
 
-pub trait IterEdges {
-    fn iter_hosts(&self) -> &[Entity];
-    fn iter_targets(&self) -> &[Entity];
+// TODO: Enable for 0.12
+/*#[derive(WorldQuery)]
+pub struct HierarchyEdges {
+    pub(crate) hosts: Option<&'static Children>,
+    pub(crate) targets: Option<&'static Parent>,
+    pub(crate) _filter: Or<(With<Parent>, With<Children>)>,
+    pub(crate) entity: Entity,
+}
+
+impl EdgeInfo for HierarchyEdgesItem<'_> {
+    fn hosts(&self) -> &[Entity] {
+        match self.hosts {
+            Some(hosts) => &hosts,
+            None => &[],
+        }
+    }
+
+    fn targets(&mut self) -> &[Entity] {
+        match self.targets {
+            Some(targets) => targets.get_slice(),
+            None => &[],
+        }
+    }
+}*/
+
+#[derive(Component, Default, Deref, DerefMut)]
+pub(crate) struct OnDelete {
+    #[deref]
+    pub hooks: SSUVec<fn(Entity, &mut World)>,
 }
 
 /// Filter to find roots of a relationship graph for quintessential traversal.
@@ -170,12 +217,12 @@ pub(crate) fn clean_recursive<R: Relation>(id: Entity, world: &mut World) {
 
     let mut buffer = world.get_resource_or_insert_with(AeryBuffer::default);
 
-    for target in targets.iter().copied() {
-        buffer.push(UnsetAsymmetric::<R>::buffered(id, target));
-    }
-
     for host in hosts.iter().copied() {
         buffer.push(Cleanup(host));
+    }
+
+    for target in targets.iter().copied() {
+        buffer.push(UnsetAsymmetric::<R>::buffered(id, target));
     }
 }
 
@@ -297,7 +344,12 @@ where
             .insert(target_hosts)
             .insert(target_cleanup);
 
-        // TODO: Events
+        world.send_event(TargetEvent {
+            host: self.host,
+            target_op: Op::Set,
+            target: self.target,
+            relation_id: RelationId::of::<R>(),
+        });
 
         // Symmetric set has to happen before exclusivity unset otherwise
         // an entity can get despawned when it shouldn't.
@@ -394,9 +446,13 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
         host_targets.remove(self.target);
         target_hosts.remove(self.host);
 
+        let mut host_exists = false;
+
         if !host_targets.vec.vec.is_empty() {
             world.entity_mut(self.host).insert(host_targets);
+            host_exists = true;
         } else if let Some(mut host) = world.get_entity_mut(self.host) {
+            host_exists = true;
             host.remove::<Targets<R>>();
 
             let mut cleanup = host
@@ -418,8 +474,11 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             }
         }
 
+        let mut target_exists = false;
+
         if !target_hosts.vec.vec.is_empty() {
             world.entity_mut(self.target).insert(target_hosts);
+            target_exists = true;
         } else if matches!(
             R::CLEANUP_POLICY,
             CleanupPolicy::Counted | CleanupPolicy::Total
@@ -432,6 +491,7 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 Command::apply(CheckedDespawn(self.target), world);
             }
         } else if let Some(mut target) = world.get_entity_mut(self.target) {
+            target_exists = true;
             target.remove::<Hosts<R>>();
 
             let mut cleanup = target
@@ -454,7 +514,14 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             }
         }
 
-        // TODO: Events
+        if host_exists && target_exists {
+            world.send_event(TargetEvent {
+                host: self.host,
+                target_op: Op::Unset,
+                target: self.target,
+                relation_id: RelationId::of::<R>(),
+            });
+        }
     }
 }
 
@@ -488,6 +555,7 @@ impl Command for Cleanup {
         }
 
         world.despawn(self.0);
+        world.send_event(CleanupEvent { entity: self.0 });
     }
 }
 
