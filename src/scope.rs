@@ -1,6 +1,11 @@
 use crate::{
-    commands::Set,
-    relation::{Relation, ZstOrPanic},
+    edges::Set,
+    relation::{
+        Relation,
+        ZstOrPanic,
+        // TODO: bevy 0.12
+        // Hierarchy
+    },
 };
 
 use bevy::ecs::{
@@ -82,6 +87,9 @@ impl<'a, T: Relation> Scope<'a, T> {
         self
     }
 }
+
+// TODO: bevy 0.12
+// impl<'a> Scope<'a, Hierarchy> {}
 
 pub trait EntityMutExt<'a> {
     fn scope<R: Relation>(&mut self, func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self;

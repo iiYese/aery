@@ -92,7 +92,7 @@ pub mod edges;
 pub mod events;
 //pub mod operations;
 pub mod relation;
-//pub mod scope;
+pub mod scope;
 pub mod tuple_traits;
 
 use events::{CleanupEvent, TargetEvent};
@@ -154,7 +154,7 @@ pub mod prelude {
             ForEachPermutations3Arity, Join, Relations, Targets, Traverse,
         },*/
         relation::{CleanupPolicy, Relation, ZstOrPanic},
-        //scope::{EntityMutExt, Scope},
+        scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
         Aery,
     };

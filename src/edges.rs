@@ -90,6 +90,8 @@ pub trait EdgeInfo {
     fn has_target(&self, entity: Entity) -> bool;
 }
 
+pub type EdgeIter<'a> = std::slice::Iter<'a, Entity>;
+
 #[derive(WorldQuery)]
 pub struct Edges<R: Relation> {
     pub(crate) hosts: Option<&'static Hosts<R>>,
@@ -121,7 +123,32 @@ impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
     }
 }
 
-// TODO: Enable for 0.12
+// Usually bad but needed for operation API glue
+impl<E: EdgeInfo> EdgeInfo for Option<E> {
+    fn hosts(&self) -> &[Entity] {
+        match self {
+            Some(edges) => edges.hosts(),
+            None => &[],
+        }
+    }
+
+    fn targets(&mut self) -> &[Entity] {
+        match self {
+            Some(edges) => edges.targets(),
+            None => &[],
+        }
+    }
+
+    fn has_host(&self, e: Entity) -> bool {
+        self.as_ref().map_or(false, |edges| edges.has_host(e))
+    }
+
+    fn has_target(&self, e: Entity) -> bool {
+        self.as_ref().map_or(false, |edges| edges.has_target(e))
+    }
+}
+
+// TODO: bevy 0.12
 /*#[derive(WorldQuery)]
 pub struct HierarchyEdges {
     pub(crate) hosts: Option<&'static Children>,
@@ -180,24 +207,24 @@ struct AeryBuffer(CommandQueue);
 // - Orphan
 // - Counted
 pub(crate) fn unset_edges<R: Relation>(id: Entity, world: &mut World) {
-    let targets = world
-        .get_mut::<Targets<R>>(id)
-        .map(|mut targets| std::mem::take(&mut targets.vec.vec))
-        .unwrap_or_default();
-
     let hosts = world
         .get_mut::<Hosts<R>>(id)
         .map(|mut hosts| std::mem::take(&mut hosts.vec.vec))
         .unwrap_or_default();
 
-    let mut buffer = world.get_resource_or_insert_with(AeryBuffer::default);
+    let targets = world
+        .get_mut::<Targets<R>>(id)
+        .map(|mut targets| std::mem::take(&mut targets.vec.vec))
+        .unwrap_or_default();
 
-    for target in targets.iter().copied() {
-        buffer.push(UnsetAsymmetric::<R>::buffered(id, target));
-    }
+    let mut buffer = world.get_resource_or_insert_with(AeryBuffer::default);
 
     for host in hosts.iter().copied() {
         buffer.push(UnsetAsymmetric::<R>::buffered(host, id));
+    }
+
+    for target in targets.iter().copied() {
+        buffer.push(UnsetAsymmetric::<R>::buffered(id, target));
     }
 }
 
@@ -205,13 +232,13 @@ pub(crate) fn unset_edges<R: Relation>(id: Entity, world: &mut World) {
 // - Recrusive
 // - Total
 pub(crate) fn clean_recursive<R: Relation>(id: Entity, world: &mut World) {
-    let targets = world
-        .get_mut::<Targets<R>>(id)
+    let hosts = world
+        .get_mut::<Hosts<R>>(id)
         .map(|mut edges| std::mem::take(&mut edges.vec.vec))
         .unwrap_or_default();
 
-    let hosts = world
-        .get_mut::<Hosts<R>>(id)
+    let targets = world
+        .get_mut::<Targets<R>>(id)
         .map(|mut edges| std::mem::take(&mut edges.vec.vec))
         .unwrap_or_default();
 

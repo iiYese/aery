@@ -17,13 +17,7 @@ use bevy::{
 
 pub trait PadMax {
     type Padded;
-}
-
-#[rustfmt::skip]
-impl<R0: Relation> PadMax
-for R0
-{
-    type Padded = (R0, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded;
 }
 
 #[rustfmt::skip]
@@ -31,6 +25,9 @@ impl<P0> PadMax
 for (P0,)
 {
     type Padded = (P0, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -38,6 +35,9 @@ impl<P0, P1> PadMax
 for (P0, P1)
 {
     type Padded = (P0, P1, (), (), (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, (), (), (), (), (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -45,6 +45,9 @@ impl<P0, P1, P2> PadMax
 for (P0, P1, P2)
 {
     type Padded = (P0, P1, P2, (), (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, (), (), (), (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -52,6 +55,9 @@ impl<P0, P1, P2, P3> PadMax
 for (P0, P1, P2, P3)
 {
     type Padded = (P0, P1, P2, P3, (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, (), (), (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -59,6 +65,9 @@ impl<P0, P1, P2, P3, P4> PadMax
 for (P0, P1, P2, P3, P4)
 {
     type Padded = (P0, P1, P2, P3, P4, (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, (), (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -66,6 +75,9 @@ impl<P0, P1, P2, P3, P4, P5> PadMax
 for (P0, P1, P2, P3, P4, P5)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -73,6 +85,9 @@ impl<P0, P1, P2, P3, P4, P5, P6> PadMax
 for (P0, P1, P2, P3, P4, P5, P6)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -80,6 +95,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7,
+         (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -87,6 +106,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8,
+         (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -94,6 +117,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9,
+         (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -101,6 +128,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
+         (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -108,6 +139,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
+         self.11, (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -115,6 +150,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
+         self.11, self.12, (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -122,6 +161,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, (), ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
+         self.11, self.12, self.13, (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -129,6 +172,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14> PadMax
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, ());
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
+         self.11, self.12, self.13, self.14, ())
+    }
 }
 
 #[rustfmt::skip]
@@ -136,6 +183,10 @@ impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15> PadMa
 for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15)
 {
     type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15);
+    fn padded(self) -> Self::Padded {
+        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
+         self.11, self.12, self.13, self.14, self.15)
+    }
 }
 
 mod sealed {
