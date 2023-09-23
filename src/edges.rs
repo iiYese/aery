@@ -85,12 +85,12 @@ impl<R: Relation> Default for Targets<R> {
 
 pub trait EdgeInfo {
     fn hosts(&self) -> &[Entity];
-    fn targets(&mut self) -> &[Entity];
+    fn targets(&self) -> &[Entity];
     fn has_host(&self, entity: Entity) -> bool;
     fn has_target(&self, entity: Entity) -> bool;
 }
 
-pub type EdgeIter<'a> = std::slice::Iter<'a, Entity>;
+pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
 #[derive(WorldQuery)]
 pub struct Edges<R: Relation> {
@@ -107,7 +107,7 @@ impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
         }
     }
 
-    fn targets(&mut self) -> &[Entity] {
+    fn targets(&self) -> &[Entity] {
         match self.targets {
             Some(targets) => &targets.vec.vec,
             None => &[],
@@ -132,7 +132,7 @@ impl<E: EdgeInfo> EdgeInfo for Option<E> {
         }
     }
 
-    fn targets(&mut self) -> &[Entity] {
+    fn targets(&self) -> &[Entity] {
         match self {
             Some(edges) => edges.targets(),
             None => &[],
@@ -742,8 +742,10 @@ impl RelationCommands for EntityMut<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::Targets;
+    use super::{Hosts, OnDelete};
     use crate::{self as aery, prelude::*};
+    use bevy::prelude::*;
     use std::array::from_fn;
 
     fn has_edges(world: &World, entity: Entity) -> bool {

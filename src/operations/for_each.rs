@@ -8,7 +8,7 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
-use super::{ControlFlow, EdgeQuery, Operations, Relations};
+use super::{ControlFlow, EdgeSide, Operations, Relations};
 
 /// A trait to iterate relation queries.
 ///
@@ -43,13 +43,13 @@ pub trait ForEachPermutations<const N: usize> {
         Func: for<'f, 'p0, 'p1> FnMut(&'f mut Self::P0<'p0>, Self::P1<'p1>) -> Ret;
 }
 
-impl<Q, R, F, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations<N>
+/*impl<Q, R, F, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations<N>
     for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, ()>
 where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    JoinedTypes: Product<N>,
+    JoinedTypes: Product<N, R>,
     JoinedQueries: for<'a> Joinable<'a, N>,
 {
     type P0<'p0> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'p0>;
@@ -96,7 +96,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    JoinedTypes: Product<N>,
+    JoinedTypes: Product<N, R>,
     JoinedQueries: for<'a> Joinable<'a, N>,
 {
     type P0<'p0> = <Q as WorldQuery>::Item<'p0>;
@@ -135,15 +135,15 @@ where
             }
         }
     }
-}
+}*/
 
-impl<Q, R, F, T, E, I> ForEachPermutations<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I>
+impl<Q, RS, F, T, E, I> ForEachPermutations<0>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, I>
 where
     Q: WorldQuery,
-    R: RelationSet,
+    RS: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeQuery,
+    T: EdgeSide,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
@@ -166,7 +166,7 @@ where
                 continue;
             };
 
-            for e in T::entities(&relations.edges) {
+            for e in T::entities(&relations) {
                 let Ok(traversal_item) = self.control.get(e) else {
                     continue;
                 };
@@ -196,7 +196,7 @@ where
     Q: WorldQuery,
     R: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeQuery,
+    T: EdgeSide,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {

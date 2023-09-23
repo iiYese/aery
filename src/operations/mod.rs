@@ -1,5 +1,6 @@
 use crate::{
-    relation::{CheckRelations, EdgeIter, EdgeWQ, EdgeWQItem, IterRelations, Relation, ZstOrPanic},
+    edges::{EdgeInfo, EdgeIter, EdgesItem},
+    relation::{Relation, ZstOrPanic},
     tuple_traits::*,
 };
 
@@ -11,15 +12,15 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-mod for_each;
-mod for_each_3arity;
-mod for_each_4arity;
-mod for_each_5arity;
+//pub(crate) mod for_each;
+//mod for_each_3arity;
+//mod for_each_4arity;
+//mod for_each_5arity;
 
-pub use for_each::*;
-pub use for_each_3arity::*;
-pub use for_each_4arity::*;
-pub use for_each_5arity::*;
+//pub use for_each::*;
+//pub use for_each_3arity::*;
+//pub use for_each_4arity::*;
+//pub use for_each_5arity::*;
 
 /// Struct to track inner product iteration.
 pub struct EdgeProduct<'a, const N: usize> {
@@ -68,78 +69,9 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
 /// See [`AeryQueryExt`] for operations.
 #[derive(WorldQuery)]
 pub struct Relations<R: RelationSet> {
-    pub(crate) edges: EdgeWQ,
+    pub(crate) edges: R::Edges,
     pub(crate) entity: Entity,
-    _filters: R::Filters,
     _phantom: PhantomData<R>,
-}
-
-impl<R: RelationSet> CheckRelations for RelationsItem<'_, R> {
-    fn has_host(
-        &self,
-        relation: impl Into<crate::Var<crate::relation::RelationId>>,
-        host: impl Into<crate::Var<Entity>>,
-    ) -> bool {
-        self.edges.edges.has_host(relation, host)
-    }
-
-    fn has_target(
-        &self,
-        relation: impl Into<crate::Var<crate::relation::RelationId>>,
-        target: impl Into<crate::Var<Entity>>,
-    ) -> bool {
-        self.edges.edges.has_target(relation, target)
-    }
-}
-
-impl<R: RelationSet> CheckRelations for Option<&RelationsItem<'_, R>> {
-    fn has_host(
-        &self,
-        relation: impl Into<crate::Var<crate::relation::RelationId>>,
-        host: impl Into<crate::Var<Entity>>,
-    ) -> bool {
-        self.is_some_and(|item| item.has_host(relation, host))
-    }
-
-    fn has_target(
-        &self,
-        relation: impl Into<crate::Var<crate::relation::RelationId>>,
-        target: impl Into<crate::Var<Entity>>,
-    ) -> bool {
-        self.is_some_and(|item: &RelationsItem<'_, R>| item.has_target(relation, target))
-    }
-}
-
-impl<RS: RelationSet> IterRelations for RelationsItem<'_, RS> {
-    type Entities<'a> = EdgeIter<'a>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
-        self.edges.edges.iter_hosts::<R>()
-    }
-
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
-        self.edges.edges.iter_targets::<R>()
-    }
-}
-
-impl<RS: RelationSet> IterRelations for Option<&RelationsItem<'_, RS>> {
-    type Entities<'a> = std::iter::Flatten<std::option::IntoIter<EdgeIter<'a>>>
-    where
-        Self: 'a;
-
-    fn iter_hosts<R: Relation>(&self) -> Self::Entities<'_> {
-        self.map(|relations| relations.iter_hosts::<R>())
-            .into_iter()
-            .flatten()
-    }
-
-    fn iter_targets<R: Relation>(&self) -> Self::Entities<'_> {
-        self.map(|relations| relations.iter_targets::<R>())
-            .into_iter()
-            .flatten()
-    }
 }
 
 /// Struct that is used to track metadata for relation operations.
@@ -210,23 +142,37 @@ where
     }
 }
 
-pub trait EdgeQuery {
-    fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a>;
+pub struct Targets<R>(PhantomData<R>);
+
+pub trait EdgeSide: Sized {
+    fn entities<'a, RS, const P: usize>(relations: &'a RelationsItem<'_, RS>) -> EdgeIter<'a>
+    where
+        RS: RelationSet,
+        RS::Edges: PadMax,
+        <RS::Edges as PadMax>::Padded: ReadOnlyWorldQuery,
+        // The bound that's depends on the other bound
+        <<<<RS::Edges as PadMax>::Padded as WorldQuery>::ReadOnly as WorldQuery>::Item<'a> as TupleLens<RS::Types, Self, P>>::Out: EdgeInfo,
+        // Rustc doesn't accept this?
+        <<<RS::Edges as PadMax>::Padded as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>: TupleLens<RS::Types, Self, P>;
+    // But this makes it happy?
+    //<<<RS as RelationSet>::Edges as PadMax>::Padded as WorldQuery>::Item<'a>: TupleLens<<RS as RelationSet>::Types, Self, P>;
 }
 
-impl<R: Relation> EdgeQuery for R {
-    fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
-        edges.edges.iter_hosts::<R>()
+/*impl<R: Relation> EdgeSide for R {
+    fn entities<'a, RS, const P: usize>(relations: &'a RelationsItem<'_, RS>) -> EdgeIter<'a>
+    where
+        RS: RelationSet,
+    {
+        relations.edges.get().hosts().iter().copied()
     }
-}
+}*/
 
-pub struct Targets<R: Relation>(PhantomData<R>);
-
-impl<R: Relation> EdgeQuery for Targets<R> {
-    fn entities<'a>(edges: &EdgeWQItem<'a>) -> EdgeIter<'a> {
-        edges.edges.iter_targets::<R>()
+/*impl<R: Relation> EdgeSide for Targets<R> {
+    type QueryItem<'e> = EdgesItem<'e, R>;
+    fn entities<'a>(edges: &'a Self::QueryItem<'_>) -> EdgeIter<'a> {
+        edges.targets().iter().copied()
     }
-}
+}*/
 
 /// The traversal functionality of the operations API. Any `T` in `traverse::<T>(roots)` must
 /// be present in the [`RelationSet`] of the control query. Diamonds are impossible with `Exclusive`
@@ -302,10 +248,8 @@ where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
-    type Traversal<T: Relation>;
-    type TargetTraversal<T: Relation>;
-    fn traverse<T: Relation>(self, starts: I) -> Self::Traversal<T>;
-    fn traverse_targets<T: Relation>(self, starts: I) -> Self::TargetTraversal<T>;
+    type Traversal<T: EdgeSide>;
+    fn traverse<T: EdgeSide>(self, starts: I) -> Self::Traversal<T>;
 }
 
 impl<Control, JoinedTypes, JoinedQueries, E, Starts> Traverse<E, Starts>
@@ -314,24 +258,9 @@ where
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
 {
-    type Traversal<T: Relation> = Operations<Control, JoinedTypes, JoinedQueries, T, Starts>;
+    type Traversal<T: EdgeSide> = Operations<Control, JoinedTypes, JoinedQueries, T, Starts>;
 
-    type TargetTraversal<T: Relation> =
-        Operations<Control, JoinedTypes, JoinedQueries, Targets<T>, Starts>;
-
-    fn traverse<T: Relation>(self, starts: Starts) -> Self::Traversal<T> {
-        Operations {
-            control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: PhantomData,
-            starts,
-            init: self.init,
-            fold: self.fold,
-        }
-    }
-
-    fn traverse_targets<T: Relation>(self, starts: Starts) -> Self::TargetTraversal<T> {
+    fn traverse<T: EdgeSide>(self, starts: Starts) -> Self::Traversal<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
@@ -528,10 +457,8 @@ pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
 {
-    type Joined<T: Relation>;
-    type TargetJoined<T: Relation>;
-    fn join<T: Relation>(self, item: Item) -> Self::Joined<T>;
-    fn join_targets<T: Relation>(self, item: Item) -> Self::TargetJoined<T>;
+    type Joined<T: EdgeSide>;
+    fn join<T: EdgeSide>(self, item: Item) -> Self::Joined<T>;
 }
 
 impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Roots> Join<Item>
@@ -541,7 +468,7 @@ where
     JoinedTypes: Append,
     JoinedQueries: Append,
 {
-    type Joined<T: Relation> = Operations<
+    type Joined<T: EdgeSide> = Operations<
         Control,
         <JoinedTypes as Append>::Out<T>,
         <JoinedQueries as Append>::Out<Item>,
@@ -549,27 +476,7 @@ where
         Roots,
     >;
 
-    type TargetJoined<T: Relation> = Operations<
-        Control,
-        <JoinedTypes as Append>::Out<Targets<T>>,
-        <JoinedQueries as Append>::Out<Item>,
-        Traversal,
-        Roots,
-    >;
-
-    fn join<T: Relation>(self, item: Item) -> Self::Joined<T> {
-        Operations {
-            control: self.control,
-            joined_types: PhantomData,
-            joined_queries: Append::append(self.joined_queries, item),
-            traversal: self.traversal,
-            starts: self.starts,
-            fold: self.fold,
-            init: self.init,
-        }
-    }
-
-    fn join_targets<T: Relation>(self, item: Item) -> Self::TargetJoined<T> {
+    fn join<T: EdgeSide>(self, item: Item) -> Self::Joined<T> {
         Operations {
             control: self.control,
             joined_types: PhantomData,
@@ -933,7 +840,7 @@ mod compile_tests {
     #[derive(Relation)]
     struct R1;
 
-    fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
+    /*fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
         left.ops()
             .join::<R0>(&b)
             .join::<R1>(&c)
@@ -967,15 +874,14 @@ mod compile_tests {
             .join::<R0>(&mut b)
             .join::<R1>(&mut c)
             .for_each(|a, (b, c)| {});
-    }
+    }*/
 
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
-        left.ops()
-            .traverse::<R0>(None::<Entity>)
-            .for_each(|a0, a1| {});
+        //left.ops().traverse::<R0>(None::<Entity>);
+        //.for_each(|a0, a1| {});
     }
 
-    fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+    /*fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
             .traverse::<R0>(None::<Entity>)
             .join::<R1>(&right)
@@ -1000,10 +906,10 @@ mod compile_tests {
             .join::<R0>(&b)
             .join::<R1>(&c)
             .for_each(|a, (b, c)| {});
-    }
+    }*/
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use crate::{self as aery, prelude::*};
     use bevy::{app::AppExit, prelude::*};
@@ -1369,4 +1275,4 @@ mod tests {
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
-}
+}*/

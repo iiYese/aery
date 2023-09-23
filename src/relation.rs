@@ -151,13 +151,13 @@ pub trait Relation: 'static + Sized + Send + Sync {
 /// to use relation operations and no type may appear more than once for operations to work.*
 /// See [`AeryQueryExt`] for operations.
 #[derive(WorldQuery)]
-pub struct Relations<R>
+pub struct Relations<RS>
 where
-    R: RelationSet,
-    R::Edges: PadMax,
-    <R::Edges as PadMax>::Padded: ReadOnlyWorldQuery,
+    RS: RelationSet,
+    RS::Edges: PadMax,
+    <RS::Edges as PadMax>::Padded: ReadOnlyWorldQuery,
 {
-    pub(crate) edges: <R::Edges as PadMax>::Padded,
+    pub(crate) edges: <RS::Edges as PadMax>::Padded,
 }
 
 // TODO: Enable for 0.12

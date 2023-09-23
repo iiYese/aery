@@ -1,6 +1,6 @@
 use crate::{
-    edges::Edges,
-    //operations::EdgeProduct,
+    edges::{Edges, EdgesItem},
+    operations::{EdgeProduct, RelationsItem},
     relation::Relation,
 };
 
@@ -18,6 +18,26 @@ use bevy::{
 pub trait PadMax {
     type Padded;
     fn padded(self) -> Self::Padded;
+}
+
+#[rustfmt::skip]
+impl<R: Relation> PadMax
+for EdgesItem<'_, R>
+{
+    type Padded = (Self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ())
+    }
+}
+
+#[rustfmt::skip]
+impl<R: Relation> PadMax
+for Option<EdgesItem<'_, R>>
+{
+    type Padded = (Self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
+    fn padded(self) -> Self::Padded {
+        (self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ())
+    }
 }
 
 #[rustfmt::skip]
@@ -195,7 +215,7 @@ mod sealed {
 
     impl Sealed for () {}
     impl<R: Relation> Sealed for R {}
-    impl<R: RelationSet> Sealed for Option<R> {}
+    impl<R: Relation> Sealed for Option<R> {}
 
     impl<Q, F> Sealed for &'_ Query<'_, '_, Q, F>
     where
@@ -227,7 +247,7 @@ macro_rules! count {
     ($_:tt $($tail:tt)*) => { 1  + count!($($tail)*) };
 }
 
-trait TupleLens<Types, Key, const POS: usize> {
+pub trait TupleLens<Types, Key, const POS: usize> {
     type Out;
     fn get(&self) -> &Self::Out;
 }
@@ -305,11 +325,11 @@ macro_rules! impl_relation_set {
 
 all_tuples!(impl_relation_set, 1, 15, P);
 
-/*pub trait Product<const N: usize> {
-    fn product<'a>(edges: &EdgeWQItem<'a>) -> EdgeProduct<'a, N>;
+pub trait Product<const N: usize, R: RelationSet> {
+    fn product<'a>(edges: &RelationsItem<'a, R>) -> EdgeProduct<'a, N>;
 }
 
-macro_rules! impl_product {
+/*macro_rules! impl_product {
     ($($P:ident),*) => {
         impl<$($P: EdgeQuery),*> Product<{ count!($($P )*) }> for ($($P,)*) {
             fn product<'a>(edges: &EdgeWQItem<'a>) -> EdgeProduct<'a, { count!($($P )*) }> {

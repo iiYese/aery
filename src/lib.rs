@@ -90,7 +90,7 @@ use bevy::{
 
 pub mod edges;
 pub mod events;
-//pub mod operations;
+pub mod operations;
 pub mod relation;
 pub mod scope;
 pub mod tuple_traits;
@@ -149,10 +149,17 @@ pub mod prelude {
     pub use crate::{
         edges::{RelationCommands, Set, Unset},
         events::{CleanupEvent, Op, TargetEvent},
-        /*operations::{
-            AeryQueryExt, ControlFlow, EdgeQuery, FoldBreadth, ForEachPermutations,
-            ForEachPermutations3Arity, Join, Relations, Targets, Traverse,
-        },*/
+        operations::{
+            //for_each::*,
+            AeryQueryExt,
+            ControlFlow,
+            EdgeSide,
+            FoldBreadth,
+            Join,
+            Relations,
+            Targets,
+            Traverse,
+        },
         relation::{CleanupPolicy, Relation, ZstOrPanic},
         scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
