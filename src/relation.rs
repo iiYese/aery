@@ -5,8 +5,9 @@ use crate::{
 use bevy::ecs::query::{ReadOnlyWorldQuery, WorldQuery};
 use core::any::TypeId;
 
+// TODO 0.12 impl for Hierarchy
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RelationId(TypeId);
+pub struct RelationId(pub(crate) TypeId);
 
 impl RelationId {
     pub fn of<R: Relation>() -> Self {
@@ -144,20 +145,6 @@ pub trait Relation: 'static + Sized + Send + Sync {
     ///
     /// For example it would make sense for a `MarriedTo` relation to be symmetric.
     const SYMMETRIC: bool = false;
-}
-
-/// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
-/// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
-/// to use relation operations and no type may appear more than once for operations to work.*
-/// See [`AeryQueryExt`] for operations.
-#[derive(WorldQuery)]
-pub struct Relations<RS>
-where
-    RS: RelationSet,
-    RS::Edges: PadMax,
-    <RS::Edges as PadMax>::Padded: ReadOnlyWorldQuery,
-{
-    pub(crate) edges: <RS::Edges as PadMax>::Padded,
 }
 
 // TODO: Enable for 0.12

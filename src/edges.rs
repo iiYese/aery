@@ -54,14 +54,14 @@ impl<T: PartialEq> SSUVec<T> {
 #[derive(Component, Deref, DerefMut)]
 pub(crate) struct Hosts<R: Relation> {
     #[deref]
-    vec: SSUVec<Entity>,
+    pub(crate) vec: SSUVec<Entity>,
     _phantom: PhantomData<R>,
 }
 
 #[derive(Component, Deref, DerefMut)]
 pub(crate) struct Targets<R: Relation> {
     #[deref]
-    vec: SSUVec<Entity>,
+    pub(crate) vec: SSUVec<Entity>,
     _phantom: PhantomData<R>,
 }
 
@@ -83,13 +83,6 @@ impl<R: Relation> Default for Targets<R> {
     }
 }
 
-pub trait EdgeInfo {
-    fn hosts(&self) -> &[Entity];
-    fn targets(&self) -> &[Entity];
-    fn has_host(&self, entity: Entity) -> bool;
-    fn has_target(&self, entity: Entity) -> bool;
-}
-
 pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
 #[derive(WorldQuery)]
@@ -97,6 +90,13 @@ pub struct Edges<R: Relation> {
     pub(crate) hosts: Option<&'static Hosts<R>>,
     pub(crate) targets: Option<&'static Targets<R>>,
     pub(crate) _filter: Or<(With<Hosts<R>>, With<Targets<R>>)>,
+}
+
+pub trait EdgeInfo {
+    fn hosts(&self) -> &[Entity];
+    fn targets(&self) -> &[Entity];
+    fn has_host(&self, entity: Entity) -> bool;
+    fn has_target(&self, entity: Entity) -> bool;
 }
 
 impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
@@ -149,29 +149,7 @@ impl<E: EdgeInfo> EdgeInfo for Option<E> {
 }
 
 // TODO: bevy 0.12
-/*#[derive(WorldQuery)]
-pub struct HierarchyEdges {
-    pub(crate) hosts: Option<&'static Children>,
-    pub(crate) targets: Option<&'static Parent>,
-    pub(crate) _filter: Or<(With<Parent>, With<Children>)>,
-    pub(crate) entity: Entity,
-}
-
-impl EdgeInfo for HierarchyEdgesItem<'_> {
-    fn hosts(&self) -> &[Entity] {
-        match self.hosts {
-            Some(hosts) => &hosts,
-            None => &[],
-        }
-    }
-
-    fn targets(&mut self) -> &[Entity] {
-        match self.targets {
-            Some(targets) => targets.get_slice(),
-            None => &[],
-        }
-    }
-}*/
+// impl EdgeInfo for Hierarchy
 
 #[derive(Component, Default, Deref, DerefMut)]
 pub(crate) struct OnDelete {

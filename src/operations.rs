@@ -1,10 +1,11 @@
 use crate::{
-    edges::{EdgeInfo, EdgeIter, EdgesItem},
-    relation::{Relation, ZstOrPanic},
+    edges::{EdgeIter, EdgesItem},
+    relation::{Relation, RelationId, ZstOrPanic},
     tuple_traits::*,
 };
 
 use bevy::ecs::{
+    component::Component,
     entity::Entity,
     query::{ReadOnlyWorldQuery, WorldQuery},
     system::Query,
@@ -68,10 +69,10 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
 /// to use relation operations and no type may appear more than once for operations to work.*
 /// See [`AeryQueryExt`] for operations.
 #[derive(WorldQuery)]
-pub struct Relations<R: RelationSet> {
-    pub(crate) edges: R::Edges,
+pub struct Relations<RS: RelationSet> {
+    pub(crate) edges: RS::Edges,
     pub(crate) entity: Entity,
-    _phantom: PhantomData<R>,
+    _phantom: PhantomData<RS>,
 }
 
 /// Struct that is used to track metadata for relation operations.
@@ -105,15 +106,15 @@ pub trait AeryQueryExt {
     fn ops_mut(&mut self) -> Operations<&mut Self>;
 }
 
-impl<'w, 's, Q, F, R> AeryQueryExt for Query<'w, 's, (Q, Relations<R>), F>
+impl<'w, 's, Q, F, RS> AeryQueryExt for Query<'w, 's, (Q, Relations<RS>), F>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
-    R: RelationSet + Send + Sync,
+    RS: RelationSet,
 {
     #[allow(clippy::let_unit_value)]
     fn ops(&self) -> Operations<&Self> {
-        let _ = R::ZST_OR_PANIC;
+        let _ = RS::ZST_OR_PANIC;
 
         Operations {
             control: self,
@@ -128,7 +129,7 @@ where
 
     #[allow(clippy::let_unit_value)]
     fn ops_mut(&mut self) -> Operations<&mut Self> {
-        let _ = R::ZST_OR_PANIC;
+        let _ = RS::ZST_OR_PANIC;
 
         Operations {
             control: self,
@@ -144,35 +145,35 @@ where
 
 pub struct Targets<R>(PhantomData<R>);
 
-pub trait EdgeSide: Sized {
-    fn entities<'a, RS, const P: usize>(relations: &'a RelationsItem<'_, RS>) -> EdgeIter<'a>
+pub trait EdgeSide {
+    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
     where
+        'i: 'r,
         RS: RelationSet,
-        RS::Edges: PadMax,
-        <RS::Edges as PadMax>::Padded: ReadOnlyWorldQuery,
-        // The bound that's depends on the other bound
-        <<<<RS::Edges as PadMax>::Padded as WorldQuery>::ReadOnly as WorldQuery>::Item<'a> as TupleLens<RS::Types, Self, P>>::Out: EdgeInfo,
-        // Rustc doesn't accept this?
-        <<<RS::Edges as PadMax>::Padded as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>: TupleLens<RS::Types, Self, P>;
-    // But this makes it happy?
-    //<<<RS as RelationSet>::Edges as PadMax>::Padded as WorldQuery>::Item<'a>: TupleLens<<RS as RelationSet>::Types, Self, P>;
+        RelationsItem<'i, RS>: RelationEntries;
 }
 
-/*impl<R: Relation> EdgeSide for R {
-    fn entities<'a, RS, const P: usize>(relations: &'a RelationsItem<'_, RS>) -> EdgeIter<'a>
+impl<R: Relation> EdgeSide for R {
+    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
     where
+        'i: 'r,
         RS: RelationSet,
+        RelationsItem<'i, RS>: RelationEntries,
     {
-        relations.edges.get().hosts().iter().copied()
+        relations.hosts(RelationId::of::<R>()).iter().copied()
     }
-}*/
+}
 
-/*impl<R: Relation> EdgeSide for Targets<R> {
-    type QueryItem<'e> = EdgesItem<'e, R>;
-    fn entities<'a>(edges: &'a Self::QueryItem<'_>) -> EdgeIter<'a> {
-        edges.targets().iter().copied()
+impl<R: Relation> EdgeSide for Targets<R> {
+    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
+    where
+        'i: 'r,
+        RS: RelationSet,
+        RelationsItem<'i, RS>: RelationEntries,
+    {
+        relations.targets(RelationId::of::<R>()).iter().copied()
     }
-}*/
+}
 
 /// The traversal functionality of the operations API. Any `T` in `traverse::<T>(roots)` must
 /// be present in the [`RelationSet`] of the control query. Diamonds are impossible with `Exclusive`
@@ -283,9 +284,9 @@ pub trait FoldBreadth {
         Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>;
 }
 
-impl<'a, 'w, 's, Q, R, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
+impl<'a, 'w, 's, Q, RS, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
     for Operations<
-        &'a Query<'w, 's, (Q, Relations<R>), F>,
+        &'a Query<'w, 's, (Q, Relations<RS>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
@@ -293,12 +294,12 @@ impl<'a, 'w, 's, Q, R, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBre
     >
 where
     Q: WorldQuery,
-    R: RelationSet,
     F: ReadOnlyWorldQuery,
+    RS: RelationSet,
 {
     type In<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
     type Out<Init, Fold> = Operations<
-        &'a Query<'w, 's, (Q, Relations<R>), F>,
+        &'a Query<'w, 's, (Q, Relations<RS>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
@@ -324,9 +325,9 @@ where
     }
 }
 
-impl<'a, 'w, 's, Q, R, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
+impl<'a, 'w, 's, Q, RS, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
     for Operations<
-        &'a mut Query<'w, 's, (Q, Relations<R>), F>,
+        &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
@@ -334,12 +335,12 @@ impl<'a, 'w, 's, Q, R, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBre
     >
 where
     Q: WorldQuery,
-    R: RelationSet,
     F: ReadOnlyWorldQuery,
+    RS: RelationSet,
 {
     type In<'i> = <Q as WorldQuery>::Item<'i>;
     type Out<Init, Fold> = Operations<
-        &'a mut Query<'w, 's, (Q, Relations<R>), F>,
+        &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
         JoinedTypes,
         JoinedQueries,
         Traversal,
@@ -489,331 +490,7 @@ where
     }
 }
 
-#[cfg_attr(doc, aquamarine::aquamarine)]
-/// Control flow enum for [`ForEachPermutations`] and [`ForEachPermutations3Arity`]. The closures
-/// accepted by both return `impl Into<ControlFlow>` with `()` being turned into
-/// `ControlFlow::Continue` to save you from typing `return ControlFlow::Continue` in all your
-/// functions.
-///
-/// ```
-///# use bevy::prelude::*;
-///# use aery::prelude::*;
-///#
-///# #[derive(Component)]
-///# struct A {
-///#     // ..
-///# }
-///#
-///# #[derive(Component)]
-///# struct B {
-///#     // ..
-///# }
-///#
-///# #[derive(Relation)]
-///# struct R;
-///#
-///# fn predicate(a: &A, b: &B) -> bool {
-///#     true
-///# }
-///#
-/// fn sys(a: Query<(&A, Relations<R>)>, b: Query<&B>) {
-///     a.ops().join::<R>(&b).for_each(|a, b| {
-///         if predicate(a, b) {
-///             return ControlFlow::Exit;
-///         }
-///
-///         // Return types still need to be the same so explicitly providing this is nessecary
-///         // when doing any controlflow manipulation.
-///         ControlFlow::Continue
-///     })
-/// }
-/// ```
-///
-///
-/// ## FastForward Illustration:
-/// ```
-/// use bevy::prelude::*;
-/// use aery::prelude::*;
-///
-/// #[derive(Component)]
-/// struct A;
-///
-/// #[derive(Component)]
-/// struct B(usize);
-///
-/// #[derive(Component)]
-/// struct C(usize);
-///
-/// #[derive(Component)]
-/// struct D(usize);
-///
-/// #[derive(Relation)]
-/// struct R0;
-///
-/// #[derive(Relation)]
-/// struct R1;
-///
-/// #[derive(Relation)]
-/// struct R2;
-///
-/// fn setup(mut commands: Commands) {
-///     let bs = std::array::from_fn::<_, 3, _>(|n| commands.spawn(B(n)).id());
-///     let cs = std::array::from_fn::<_, 3, _>(|n| commands.spawn(C(n)).id());
-///     let ds = std::array::from_fn::<_, 3, _>(|n| commands.spawn(D(n)).id());
-///
-///     let a = commands.spawn(A).id();
-///
-///     for id in bs {
-///         commands.add(Set::<R0>::new(a, id));
-///     }
-///
-///     for id in cs {
-///         commands.add(Set::<R1>::new(a, id));
-///     }
-///
-///     for id in ds {
-///         commands.add(Set::<R2>::new(a, id));
-///     }
-/// }
-///
-/// fn ff_sys(
-///     a: Query<(&A, Relations<(R0, R1, R2)>)>,
-///     b: Query<&B>,
-///     c: Query<&C>,
-///     d: Query<&D>
-/// ) {
-///     a.ops()
-///         .join::<R0>(&b)
-///         .join::<R1>(&c)
-///         .join::<R2>(&d)
-///         .for_each(|a, (b, c, d)| {
-///             if c.0 == 1 {
-///                 ControlFlow::FastForward(1)
-///             }
-///             else {
-///                 println!("({}, {}, {})", b.0, c.0, d.0);
-///                 ControlFlow::Continue
-///             }
-///         });
-/// }
-/// ```
-/// ### Output of ff_sys:
-/// ```ignore
-///     (0, 0, 0)
-///     (0, 0, 1)
-///     (0, 0, 2)
-/// //  Skipped:
-/// //  (0, 1, 0)
-/// //  (0, 1, 1)
-/// //  (0, 1, 2)
-///     (0, 2, 0)
-///     (0, 2, 1)
-///     (0, 2, 2)
-///     (1, 0, 0)
-///     (1, 0, 1)
-///     (1, 0, 2)
-/// //  Skipped:
-/// //  (1, 1, 0)
-/// //  (1, 1, 1)
-/// //  (1, 1, 2)
-///     (1, 2, 0)
-///     (1, 2, 1)
-///     (1, 2, 2)
-///     (2, 0, 0)
-///     (2, 0, 1)
-///     (2, 0, 2)
-/// //  Skipped:
-/// //  (2, 1, 0)
-/// //  (2, 1, 1)
-/// //  (2, 1, 2)
-///     (2, 2, 0)
-///     (2, 2, 1)
-///     (2, 2, 2)
-/// ```
-/// ## Walk Illustration:
-/// ```
-/// use bevy::prelude::*;
-/// use aery::prelude::*;
-///
-/// #[derive(Component)]
-/// struct A(usize);
-///
-/// #[derive(Component)]
-/// struct B(usize);
-///
-/// #[derive(Relation)]
-/// struct R0;
-///
-/// #[derive(Relation)]
-/// struct R1;
-///
-/// fn setup(mut commands: Commands) {
-///     commands.add(|wrld: &mut World| {
-///         wrld.spawn(A(0))
-///             .scope::<R0>(|_, mut ent1| {
-///                 ent1.insert(A(1));
-///                 ent1.scope_target::<R1>(|_, mut ent| { ent.insert(B(0)); })
-///                     .scope_target::<R1>(|_, mut ent| { ent.insert(B(1)); });
-///             })
-///             .scope::<R0>(|_, mut ent2| {
-///                 ent2.insert(A(2));
-///                 ent2.scope_target::<R1>(|_, mut ent| { ent.insert(B(3)); })
-///                     .scope_target::<R1>(|_, mut ent| { ent.insert(B(4)); });
-///             })
-///             .scope::<R0>(|_, mut ent3| {
-///                 ent3.insert(A(3));
-///                 ent3.scope_target::<R1>(|_, mut ent| { ent.insert(B(5)); })
-///                     .scope_target::<R1>(|_, mut ent| { ent.insert(B(6)); });
-///             });
-///     });
-/// }
-///
-/// fn walk_sys(
-///     roots: Query<Entity, Root<R0>>,
-///     a: Query<(&A, Relations<(R0, R1)>)>,
-///     b: Query<&B>,
-/// ) {
-///     a.ops()
-///         .join::<R1>(&b)
-///         .traverse::<R0>(roots.iter())
-///         .for_each(|a, a_child, b| {
-///             if a_child.0 == 2 {
-///                 ControlFlow::Walk
-///             }
-///             else {
-///                 println!("({}, {}, {})", a.0, a_child.0, b.0);
-///                 ControlFlow::Continue
-///             }
-///         });
-/// }
-/// ```
-/// ### Output of walk_sys:
-/// ```ignore
-///     (0, 1, 0)
-///     (0, 1, 1)
-/// //  Skipped:
-/// //  (0, 2, 3)
-/// //  (0, 2, 4)
-///     (0, 3, 5)
-///     (0, 3, 6)
-/// ```
-/// ## Probe Illustration:
-/// ```
-/// use bevy::prelude::*;
-/// use aery::prelude::*;
-///
-/// #[derive(Component)]
-/// struct A(usize);
-///
-/// #[derive(Relation)]
-/// struct R;
-///
-/// fn setup(mut commands: Commands) {
-///     commands.add(|wrld: &mut World| {
-///         wrld.spawn(A(0))
-///             .scope::<R>(|_, mut ent1| {
-///                 ent1.insert(A(1));
-///                 ent1.scope_target::<R>(|_, mut ent4| { ent4.insert(A(4)); })
-///                     .scope_target::<R>(|_, mut ent5| { ent5.insert(A(5)); });
-///             })
-///             .scope::<R>(|_, mut ent2| {
-///                 ent2.insert(A(2));
-///                 ent2.scope_target::<R>(|_, mut ent6| { ent6.insert(A(6)); })
-///                     .scope_target::<R>(|_, mut ent7| { ent7.insert(A(7)); });
-///             })
-///             .scope::<R>(|_, mut ent3| {
-///                 ent3.insert(A(3));
-///                 ent3.scope_target::<R>(|_, mut ent8| { ent8.insert(A(8)); })
-///                     .scope_target::<R>(|_, mut ent9| { ent9.insert(A(9)); });
-///             });
-///     });
-/// }
-///
-/// fn noprobe(query: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
-///     query.ops().traverse::<R>(roots.iter()).for_each(|a, a_child| {
-///         // ..
-///     })
-/// }
-///
-/// fn probe(query: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
-///     query.ops().traverse::<R>(roots.iter()).for_each(|a, a_child| {
-///         if (a_child.0 == 2) {
-///             ControlFlow::Probe
-///         }
-///         else {
-///             ControlFlow::Continue
-///         }
-///     })
-/// }
-/// ```
-/// ### Traversal of noprobe:
-/// Pink means traversed.
-/// ```mermaid
-/// flowchart BT
-/// classDef pink fill:#f66
-///
-/// E1:::pink --R--> E0:::pink
-/// E2:::pink --R--> E0:::pink
-/// E3:::pink --R--> E0:::pink
-///
-/// E4:::pink --R--> E1:::pink
-/// E5:::pink --R--> E1:::pink
-///
-/// E6:::pink --R--> E2:::pink
-/// E7:::pink --R--> E2:::pink
-///
-/// E8:::pink --R--> E3:::pink
-/// E9:::pink --R--> E3:::pink
-/// ```
-///
-/// ### Traversal of probe:
-/// Pink means traversed.
-/// ```mermaid
-/// flowchart BT
-/// classDef pink fill:#f66
-///
-/// E1:::pink --R--> E0:::pink
-/// E2:::pink --R--> E0:::pink
-/// E3 --R--> E0:::pink
-///
-/// E4 --R--> E1:::pink
-/// E5 --R--> E1:::pink
-///
-/// E6:::pink --R--> E2:::pink
-/// E7:::pink --R--> E2:::pink
-///
-/// E8 --R--> E3
-/// E9 --R--> E3
-/// ```
-pub enum ControlFlow {
-    /// Continue to next permutation.
-    Continue,
-    /// Stop iterating permutatiosn and exit loop.
-    Exit,
-    /// FastForward(n) will advance the nth join to the next match skipping any premutations.
-    /// inbetween where it currently is and the next permutation where it was supposed to advance.
-    /// Has no effect for operations with no joins.
-    FastForward(usize),
-    /// Walks to the next entity in the "traversal" skipping any remaining permutations to iterate.
-    /// - For operations with *traversals* this is the next entity in the traversal path.
-    /// - Otherwise when there are only joins it's a linear traversal through the query items
-    /// and this is just the next entity in the control query.
-    Walk,
-    /// Skips:
-    /// - Any remaining join permutations.
-    /// - Any remaining entities on the current breadth.
-    /// - Entities on the breadth of the next depth that are before the current child/ancestor.
-    Probe,
-    /// Conclude's a traversal path. Useful for traversals that start from multiple points like
-    /// hierarchy ascent to find siblings.
-    Conclude,
-}
-
-impl From<()> for ControlFlow {
-    fn from(_: ()) -> Self {
-        ControlFlow::Continue
-    }
-}
+pub trait Hereditary: Component {}
 
 // TODO: Compile tests for scan_breadth & track
 #[cfg(test)]

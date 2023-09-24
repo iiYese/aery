@@ -1,213 +1,21 @@
 use crate::{
-    edges::{Edges, EdgesItem},
+    edges::{EdgeInfo, Edges, EdgesItem},
     operations::{EdgeProduct, RelationsItem},
-    relation::Relation,
+    relation::{Relation, RelationId},
 };
+use core::any::TypeId;
 
 use seq_macro::seq;
 
 use bevy::{
     ecs::{
+        component::Component,
         entity::Entity,
         query::{ReadOnlyWorldQuery, WorldQuery},
         system::Query,
     },
     utils::all_tuples,
 };
-
-pub trait PadMax {
-    type Padded;
-    fn padded(self) -> Self::Padded;
-}
-
-#[rustfmt::skip]
-impl<R: Relation> PadMax
-for EdgesItem<'_, R>
-{
-    type Padded = (Self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<R: Relation> PadMax
-for Option<EdgesItem<'_, R>>
-{
-    type Padded = (Self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0> PadMax
-for (P0,)
-{
-    type Padded = (P0, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, (), (), (), (), (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1> PadMax
-for (P0, P1)
-{
-    type Padded = (P0, P1, (), (), (), (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, (), (), (), (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2> PadMax
-for (P0, P1, P2)
-{
-    type Padded = (P0, P1, P2, (), (), (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, (), (), (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3> PadMax
-for (P0, P1, P2, P3)
-{
-    type Padded = (P0, P1, P2, P3, (), (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, (), (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4> PadMax
-for (P0, P1, P2, P3, P4)
-{
-    type Padded = (P0, P1, P2, P3, P4, (), (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, (), (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5> PadMax
-for (P0, P1, P2, P3, P4, P5)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, (), (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, (), (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6> PadMax
-for (P0, P1, P2, P3, P4, P5, P6)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, (), (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, (), (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, (), (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7,
-         (), (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, (), (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8,
-         (), (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, (), (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9,
-         (), (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, (), (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
-         (), (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, (), (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
-         self.11, (), (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, (), (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
-         self.11, self.12, (), (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, (), ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
-         self.11, self.12, self.13, (), ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, ());
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
-         self.11, self.12, self.13, self.14, ())
-    }
-}
-
-#[rustfmt::skip]
-impl<P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15> PadMax
-for (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15)
-{
-    type Padded = (P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15);
-    fn padded(self) -> Self::Padded {
-        (self.0, self.1, self.2, self.3, self.4, self.5, self.6, self.7, self.8, self.9, self.10,
-         self.11, self.12, self.13, self.14, self.15)
-    }
-}
 
 mod sealed {
     use super::*;
@@ -246,28 +54,6 @@ macro_rules! count {
     () => { 0 };
     ($_:tt $($tail:tt)*) => { 1  + count!($($tail)*) };
 }
-
-pub trait TupleLens<Types, Key, const POS: usize> {
-    type Out;
-    fn get(&self) -> &Self::Out;
-}
-
-seq!(N in 0..16 {
-    #[rustfmt::skip]
-    impl<
-        E0, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, E13, E14, E15,
-        T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15,
-    >
-        TupleLens<(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15), T~N, N>
-    for
-        (E0, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, E11, E12, E13, E14, E15)
-    {
-        type Out = E~N;
-        fn get(&self) -> &Self::Out {
-            &self.N
-        }
-    }
-});
 
 pub trait Append {
     type Out<Item>;
@@ -325,11 +111,75 @@ macro_rules! impl_relation_set {
 
 all_tuples!(impl_relation_set, 1, 15, P);
 
-pub trait Product<const N: usize, R: RelationSet> {
+pub trait RelationEntries {
+    fn hosts(&self, id: RelationId) -> &[Entity];
+    fn targets(&self, id: RelationId) -> &[Entity];
+}
+
+impl<R: Relation> RelationEntries for RelationsItem<'_, R> {
+    fn hosts(&self, id: RelationId) -> &[Entity] {
+        if TypeId::of::<R>() == id.0 {
+            self.edges.hosts()
+        } else {
+            &[]
+        }
+    }
+
+    fn targets(&self, id: RelationId) -> &[Entity] {
+        if TypeId::of::<R>() == id.0 {
+            self.edges.targets()
+        } else {
+            &[]
+        }
+    }
+}
+
+impl<R: Relation> RelationEntries for RelationsItem<'_, Option<R>> {
+    fn hosts(&self, id: RelationId) -> &[Entity] {
+        if TypeId::of::<R>() == id.0 {
+            self.edges.hosts()
+        } else {
+            &[]
+        }
+    }
+
+    fn targets(&self, id: RelationId) -> &[Entity] {
+        if TypeId::of::<R>() == id.0 {
+            self.edges.targets()
+        } else {
+            &[]
+        }
+    }
+}
+
+macro_rules! impl_relation_entries {
+    ($(($P:ident, $e:ident)),*) => {
+        impl<$($P: RelationSet),*> RelationEntries for RelationsItem<'_, ($($P,)*)>
+        where
+            $(for<'a> <<$P::Edges as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>: EdgeInfo,)*
+        {
+            fn hosts(&self, id: RelationId) -> &[Entity] {
+                let ($($e,)*) = &self.edges;
+                $(if TypeId::of::<$P::Types>() == id.0 { return  $e.hosts() })*
+                &[]
+            }
+
+            fn targets(&self, id: RelationId) -> &[Entity] {
+                let ($($e,)*) = &self.edges;
+                $(if TypeId::of::<$P::Types>() == id.0 { return  $e.targets() })*
+                &[]
+            }
+        }
+    }
+}
+
+all_tuples!(impl_relation_entries, 1, 15, P, e);
+
+/*pub trait Product<const N: usize, R: RelationSet> {
     fn product<'a>(edges: &RelationsItem<'a, R>) -> EdgeProduct<'a, N>;
 }
 
-/*macro_rules! impl_product {
+macro_rules! impl_product {
     ($($P:ident),*) => {
         impl<$($P: EdgeQuery),*> Product<{ count!($($P )*) }> for ($($P,)*) {
             fn product<'a>(edges: &EdgeWQItem<'a>) -> EdgeProduct<'a, { count!($($P )*) }> {
@@ -434,5 +284,7 @@ macro_rules! impl_joinable {
 }
 
 all_tuples!(impl_joinable, 2, 15, P, p, e, v);
+
+pub trait HereditaryWorldQuery {}
 
 pub trait Trackable: Sealed {}
