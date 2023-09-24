@@ -82,7 +82,7 @@ all_tuples!(impl_append, 1, 15, P, p);
 
 pub trait RelationSet: Sized + Sealed {
     type Edges: ReadOnlyWorldQuery;
-    type Types;
+    type Types: 'static;
 }
 
 impl RelationSet for () {

@@ -1,7 +1,4 @@
-use crate::{
-    tuple_traits::{PadMax, RelationSet},
-    Var,
-};
+use crate::Var;
 use bevy::ecs::query::{ReadOnlyWorldQuery, WorldQuery};
 use core::any::TypeId;
 
