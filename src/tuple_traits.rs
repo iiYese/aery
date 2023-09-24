@@ -1,6 +1,6 @@
 use crate::{
     edges::{EdgeInfo, Edges, EdgesItem},
-    operations::{EdgeProduct, RelationsItem},
+    operations::{EdgeProduct, EdgeSide, RelationsItem},
     relation::{Relation, RelationId},
 };
 use core::any::TypeId;
@@ -175,15 +175,25 @@ macro_rules! impl_relation_entries {
 
 all_tuples!(impl_relation_entries, 1, 15, P, e);
 
-/*pub trait Product<const N: usize, R: RelationSet> {
-    fn product<'a>(edges: &RelationsItem<'a, R>) -> EdgeProduct<'a, N>;
+pub trait Product<const N: usize> {
+    fn product<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeProduct<'r, N>
+    where
+        'i: 'r,
+        RS: RelationSet,
+        RelationsItem<'i, RS>: RelationEntries;
 }
 
 macro_rules! impl_product {
     ($($P:ident),*) => {
-        impl<$($P: EdgeQuery),*> Product<{ count!($($P )*) }> for ($($P,)*) {
-            fn product<'a>(edges: &EdgeWQItem<'a>) -> EdgeProduct<'a, { count!($($P )*) }> {
-                let base_iterators = [$(<$P as crate::operations::EdgeQuery>::entities(&edges),)*];
+        impl<$($P: EdgeSide),*> Product<{ count!($($P )*) }> for ($($P,)*) {
+            fn product<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>)
+                -> EdgeProduct<'r, { count!($($P )*) }>
+            where
+                'i: 'r,
+                RS: RelationSet,
+                RelationsItem<'i, RS>: RelationEntries
+            {
+                let base_iterators = [$(<$P as EdgeSide>::entities(&relations),)*];
                 let live_iterators = base_iterators.clone();
                 let entities = [None::<Entity>; count!($($P )*)];
 
@@ -197,7 +207,7 @@ macro_rules! impl_product {
     };
 }
 
-all_tuples!(impl_product, 1, 15, P);*/
+all_tuples!(impl_product, 1, 15, P);
 
 pub trait Joinable<'a, const N: usize>: Sealed {
     type Out;

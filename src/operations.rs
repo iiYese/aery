@@ -13,16 +13,6 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-//pub(crate) mod for_each;
-//mod for_each_3arity;
-//mod for_each_4arity;
-//mod for_each_5arity;
-
-//pub use for_each::*;
-//pub use for_each_3arity::*;
-//pub use for_each_4arity::*;
-//pub use for_each_5arity::*;
-
 /// Struct to track inner product iteration.
 pub struct EdgeProduct<'a, const N: usize> {
     pub(crate) base_iterators: [EdgeIter<'a>; N],
@@ -31,7 +21,7 @@ pub struct EdgeProduct<'a, const N: usize> {
 }
 
 impl<'a, const N: usize> EdgeProduct<'a, N> {
-    fn advance(&mut self, prev_matches: [bool; N]) -> Option<[Entity; N]> {
+    pub(crate) fn advance(&mut self, prev_matches: [bool; N]) -> Option<[Entity; N]> {
         let n = prev_matches
             .iter()
             .enumerate()
@@ -85,13 +75,13 @@ pub struct Operations<
     Init = (),
     Fold = (),
 > {
-    control: Control,
-    joined_types: PhantomData<JoinedTypes>,
-    joined_queries: JoinedQueries,
-    traversal: PhantomData<Traversal>,
-    starts: Starts,
-    init: Init,
-    fold: Fold,
+    pub(crate) control: Control,
+    pub(crate) joined_types: PhantomData<JoinedTypes>,
+    pub(crate) joined_queries: JoinedQueries,
+    pub(crate) traversal: PhantomData<Traversal>,
+    pub(crate) starts: Starts,
+    pub(crate) init: Init,
+    pub(crate) fold: Fold,
 }
 
 /// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
@@ -517,7 +507,7 @@ mod compile_tests {
     #[derive(Relation)]
     struct R1;
 
-    /*fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
+    fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
         left.ops()
             .join::<R0>(&b)
             .join::<R1>(&c)
@@ -551,11 +541,18 @@ mod compile_tests {
             .join::<R0>(&mut b)
             .join::<R1>(&mut c)
             .for_each(|a, (b, c)| {});
-    }*/
+    }
 
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
-        //left.ops().traverse::<R0>(None::<Entity>);
-        //.for_each(|a0, a1| {});
+        left.ops()
+            .traverse::<R0>(None::<Entity>)
+            .for_each(|a0, a1| {});
+    }
+
+    fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
+        left.ops_mut()
+            .traverse::<R0>(None::<Entity>)
+            .for_each(|a0, a1| {});
     }
 
     /*fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
@@ -563,12 +560,6 @@ mod compile_tests {
             .traverse::<R0>(None::<Entity>)
             .join::<R1>(&right)
             .for_each(|a0, a1, b| {});
-    }
-
-    fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
-        left.ops_mut()
-            .traverse::<R0>(None::<Entity>)
-            .for_each(|a0, a1| {});
     }
 
     fn traverse_mut_joined_mut(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
