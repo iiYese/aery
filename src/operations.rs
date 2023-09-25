@@ -555,7 +555,7 @@ mod compile_tests {
             .for_each(|a0, a1| {});
     }
 
-    /*fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+    fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
             .traverse::<R0>(None::<Entity>)
             .join::<R1>(&right)
@@ -574,10 +574,10 @@ mod compile_tests {
             .join::<R0>(&b)
             .join::<R1>(&c)
             .for_each(|a, (b, c)| {});
-    }*/
+    }
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
     use crate::{self as aery, prelude::*};
     use bevy::{app::AppExit, prelude::*};
@@ -635,11 +635,8 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a1)
-                .unwrap()
                 .set::<R1>(b0)
-                .unwrap()
                 .set::<R1>(b2)
-                .unwrap()
                 .set::<R2>(c1);
 
             world.insert_resource(EntityList { entities });
@@ -652,9 +649,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join_targets::<R0>(&mut a)
-                .join_targets::<R1>(&mut b)
-                .join_targets::<R2>(&mut c)
+                .join::<Targets<R0>>(&mut a)
+                .join::<Targets<R1>>(&mut b)
+                .join::<Targets<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -716,13 +713,9 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a0)
-                .unwrap()
                 .set::<R0>(a2)
-                .unwrap()
                 .set::<R1>(b1)
-                .unwrap()
                 .set::<R2>(c0)
-                .unwrap()
                 .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
@@ -735,9 +728,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join_targets::<R0>(&mut a)
-                .join_targets::<R1>(&mut b)
-                .join_targets::<R2>(&mut c)
+                .join::<Targets<R0>>(&mut a)
+                .join::<Targets<R1>>(&mut b)
+                .join::<Targets<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -799,21 +792,13 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a0)
-                .unwrap()
                 .set::<R0>(a1)
-                .unwrap()
                 .set::<R0>(a2)
-                .unwrap()
                 .set::<R1>(b0)
-                .unwrap()
                 .set::<R1>(b1)
-                .unwrap()
                 .set::<R1>(b2)
-                .unwrap()
                 .set::<R2>(c0)
-                .unwrap()
                 .set::<R2>(c1)
-                .unwrap()
                 .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
@@ -826,9 +811,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join_targets::<R0>(&mut a)
-                .join_targets::<R1>(&mut b)
-                .join_targets::<R2>(&mut c)
+                .join::<Targets<R0>>(&mut a)
+                .join::<Targets<R1>>(&mut b)
+                .join::<Targets<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -883,21 +868,13 @@ mod tests {
             world
                 .entity_mut(left)
                 .set::<R0>(a0)
-                .unwrap()
                 .set::<R0>(a1)
-                .unwrap()
                 .set::<R0>(a2)
-                .unwrap()
                 .set::<R1>(b0)
-                .unwrap()
                 .set::<R1>(b1)
-                .unwrap()
                 .set::<R1>(b2)
-                .unwrap()
                 .set::<R2>(c0)
-                .unwrap()
                 .set::<R2>(c1)
-                .unwrap()
                 .set::<R2>(c2);
 
             world.insert_resource(EntityList { entities });
@@ -910,9 +887,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join_targets::<R0>(&mut a)
-                .join_targets::<R1>(&mut b)
-                .join_targets::<R2>(&mut c)
+                .join::<Targets<R0>>(&mut a)
+                .join::<Targets<R1>>(&mut b)
+                .join::<Targets<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -943,4 +920,4 @@ mod tests {
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
-}*/
+}

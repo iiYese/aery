@@ -9,11 +9,11 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
-//mod for_each_3arity;
+mod for_each_3arity;
 //mod for_each_4arity;
 //mod for_each_5arity;
 
-//pub use for_each_3arity::*;
+pub use for_each_3arity::*;
 //pub use for_each_4arity::*;
 //pub use for_each_5arity::*;
 

@@ -8,7 +8,10 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
-use super::{ControlFlow, EdgeQuery, Operations, Relations};
+use crate::{
+    for_each::ControlFlow,
+    operations::{EdgeSide, Operations, Relations, RelationsItem},
+};
 
 /// A 3 arity version of [`ForEachPermutations`] for when operations feature a traversal with 1 or
 /// more joins. Will iterate through hierarchy permutations and join permutations together.
@@ -31,17 +34,18 @@ pub trait ForEachPermutations3Arity<const N: usize> {
         ) -> Ret;
 }
 
-impl<Q, R, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, T, I>
+impl<Q, RS, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, T, I>
 where
     Q: WorldQuery,
-    R: RelationSet,
+    RS: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeQuery,
+    T: EdgeSide,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
     JoinedQueries: for<'a> Joinable<'a, N>,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
     type P0<'p0> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'p0>;
     type P1<'p1> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'p1>;
@@ -67,12 +71,12 @@ where
                 continue;
             };
 
-            for mid in T::entities(&left_edges.edges) {
+            for mid in T::entities(&left_edges) {
                 let Ok((mut mid_components, _)) = self.control.get(mid) else {
                     continue;
                 };
 
-                let mut edge_product = JoinedTypes::product(&left_edges.edges);
+                let mut edge_product = JoinedTypes::product(&left_edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -108,22 +112,23 @@ where
                 }
             }
 
-            queue.extend(T::entities(&left_edges.edges));
+            queue.extend(T::entities(&left_edges));
         }
     }
 }
 
-impl<Q, R, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, JoinedTypes, JoinedQueries, T, I>
+impl<Q, RS, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, T, I>
 where
     Q: WorldQuery,
-    R: RelationSet,
+    RS: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeQuery,
+    T: EdgeSide,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
     JoinedQueries: for<'a> Joinable<'a, N>,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
     type P0<'p0> = <Q as WorldQuery>::Item<'p0>;
     type P1<'p1> = <Q as WorldQuery>::Item<'p1>;
@@ -152,14 +157,14 @@ where
                 continue;
             };
 
-            for mid in T::entities(&left_edges.edges) {
+            for mid in T::entities(&left_edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok((mut mid_components, _)) = (unsafe { self.control.get_unchecked(mid) })
                 else {
                     continue;
                 };
 
-                let mut edge_product = JoinedTypes::product(&left_edges.edges);
+                let mut edge_product = JoinedTypes::product(&left_edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -195,20 +200,21 @@ where
                 }
             }
 
-            queue.extend(T::entities(&left_edges.edges));
+            queue.extend(T::entities(&left_edges));
         }
     }
 }
 
-impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
+impl<Q, RS, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, I, Init, Fold>
 where
     Q: WorldQuery,
-    R: RelationSet,
+    RS: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeQuery,
+    T: EdgeSide,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
     Init: for<'a> FnMut(&mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>) -> Acc,
     Fold: for<'a> FnMut(
         Acc,
@@ -241,7 +247,7 @@ where
 
             let mut acc = Ok::<_, Err>((self.init)(&mut control));
 
-            for e in T::entities(&relations.edges) {
+            for e in T::entities(&relations) {
                 let Ok(traversal_item) = self.control.get(e) else {
                     continue;
                 };
@@ -253,7 +259,7 @@ where
                 acc = (self.fold)(acc_ok, traversal_item.0);
             }
 
-            for e in T::entities(&relations.edges) {
+            for e in T::entities(&relations) {
                 let Ok(traversal_item) = self.control.get(e) else {
                     continue;
                 };
@@ -272,20 +278,21 @@ where
                 }
             }
 
-            queue.extend(T::entities(&relations.edges));
+            queue.extend(T::entities(&relations));
         }
     }
 }
 
-impl<Q, R, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<R>), F>, (), (), T, I, Init, Fold>
+impl<Q, RS, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, I, Init, Fold>
 where
     Q: WorldQuery,
-    R: RelationSet,
+    RS: RelationSet,
     F: ReadOnlyWorldQuery,
-    T: EdgeQuery,
+    T: EdgeSide,
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
     Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>) -> Acc,
     Fold: for<'a> FnMut(Acc, <Q as WorldQuery>::Item<'a>) -> Result<Acc, Err>,
 {
@@ -317,7 +324,7 @@ where
 
             let mut acc = Ok::<_, Err>((self.init)(&mut control));
 
-            for e in T::entities(&relations.edges) {
+            for e in T::entities(&relations) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(traversal_item) = (unsafe { self.control.get_unchecked(e) }) else {
                     continue;
@@ -330,7 +337,7 @@ where
                 acc = (self.fold)(acc_ok, traversal_item.0);
             }
 
-            for e in T::entities(&relations.edges) {
+            for e in T::entities(&relations) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
                 let Ok(traversal_item) = (unsafe { self.control.get_unchecked(e) }) else {
                     continue;
@@ -350,7 +357,7 @@ where
                 }
             }
 
-            queue.extend(T::entities(&relations.edges));
+            queue.extend(T::entities(&relations));
         }
     }
 }
