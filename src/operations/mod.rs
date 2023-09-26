@@ -1,11 +1,6 @@
-use crate::{
-    edges::{EdgeIter, EdgesItem},
-    relation::{Relation, RelationId, ZstOrPanic},
-    tuple_traits::*,
-};
+use crate::{relation::ZstOrPanic, tuple_traits::*};
 
 use bevy::ecs::{
-    component::Component,
     entity::Entity,
     query::{ReadOnlyWorldQuery, WorldQuery},
     system::Query,
@@ -13,76 +8,8 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-/// Struct to track inner product iteration.
-pub struct EdgeProduct<'a, const N: usize> {
-    pub(crate) base_iterators: [EdgeIter<'a>; N],
-    pub(crate) live_iterators: [EdgeIter<'a>; N],
-    pub(crate) entities: [Option<Entity>; N],
-}
-
-impl<'a, const N: usize> EdgeProduct<'a, N> {
-    pub(crate) fn advance(&mut self, prev_matches: [bool; N]) -> Option<[Entity; N]> {
-        let n = prev_matches
-            .iter()
-            .enumerate()
-            .find_map(|(n, matches)| (!matches).then_some(n))
-            .unwrap_or(N);
-
-        for i in (1..N).skip(n) {
-            self.live_iterators[i] = self.base_iterators[i].clone();
-            self.entities[i] = self.live_iterators[i].next();
-        }
-
-        'next_permutation: {
-            for i in (1..N).take(n).rev() {
-                if let Some(entity) = self.live_iterators[i].next() {
-                    self.entities[i] = Some(entity);
-                    break 'next_permutation;
-                } else {
-                    self.live_iterators[i] = self.base_iterators[i].clone();
-                    self.entities[i] = self.live_iterators[i].next();
-                }
-            }
-
-            self.entities[0] = self.live_iterators[0].next();
-        }
-
-        self.entities
-            .iter()
-            .all(Option::is_some)
-            .then(|| self.entities.map(Option::unwrap))
-    }
-}
-
-/// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
-/// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
-/// to use relation operations and no type may appear more than once for operations to work.*
-/// See [`AeryQueryExt`] for operations.
-#[derive(WorldQuery)]
-pub struct Relations<RS: RelationSet> {
-    pub(crate) edges: RS::Edges,
-    pub(crate) entity: Entity,
-    _phantom: PhantomData<RS>,
-}
-
-/// Struct that is used to track metadata for relation operations.
-pub struct Operations<
-    Control,
-    JoinedTypes = (),
-    JoinedQueries = (),
-    Traversal = (),
-    Starts = (),
-    Init = (),
-    Fold = (),
-> {
-    pub(crate) control: Control,
-    pub(crate) joined_types: PhantomData<JoinedTypes>,
-    pub(crate) joined_queries: JoinedQueries,
-    pub(crate) traversal: PhantomData<Traversal>,
-    pub(crate) starts: Starts,
-    pub(crate) init: Init,
-    pub(crate) fold: Fold,
-}
+pub mod utils;
+use utils::*;
 
 /// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
 /// trait implementations to build relation operations. This query is called the "control query".
@@ -111,7 +38,9 @@ where
             joined_types: PhantomData,
             joined_queries: (),
             traversal: PhantomData,
-            starts: (),
+            start: (),
+            tracked_queries: (),
+            track_self: (),
             init: (),
             fold: (),
         }
@@ -126,42 +55,12 @@ where
             joined_types: PhantomData,
             joined_queries: (),
             traversal: PhantomData,
-            starts: (),
+            start: (),
+            tracked_queries: (),
+            track_self: (),
             init: (),
             fold: (),
         }
-    }
-}
-
-pub struct Targets<R>(PhantomData<R>);
-
-pub trait EdgeSide {
-    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
-    where
-        'i: 'r,
-        RS: RelationSet,
-        RelationsItem<'i, RS>: RelationEntries;
-}
-
-impl<R: Relation> EdgeSide for R {
-    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
-    where
-        'i: 'r,
-        RS: RelationSet,
-        RelationsItem<'i, RS>: RelationEntries,
-    {
-        relations.hosts(RelationId::of::<R>()).iter().copied()
-    }
-}
-
-impl<R: Relation> EdgeSide for Targets<R> {
-    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
-    where
-        'i: 'r,
-        RS: RelationSet,
-        RelationsItem<'i, RS>: RelationEntries,
-    {
-        relations.targets(RelationId::of::<R>()).iter().copied()
     }
 }
 
@@ -234,30 +133,25 @@ impl<R: Relation> EdgeSide for Targets<R> {
 ///     })
 /// }
 /// ```
-pub trait Traverse<E, I>
-where
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
-{
+pub trait Traverse {
     type Traversal<T: EdgeSide>;
-    fn traverse<T: EdgeSide>(self, starts: I) -> Self::Traversal<T>;
+    fn traverse<T: EdgeSide>(self, start: Entity) -> Self::Traversal<T>;
 }
 
-impl<Control, JoinedTypes, JoinedQueries, E, Starts> Traverse<E, Starts>
+impl<Control, JoinedTypes, JoinedQueries> Traverse
     for Operations<Control, JoinedTypes, JoinedQueries>
-where
-    E: Borrow<Entity>,
-    Starts: IntoIterator<Item = E>,
 {
-    type Traversal<T: EdgeSide> = Operations<Control, JoinedTypes, JoinedQueries, T, Starts>;
+    type Traversal<T: EdgeSide> = Operations<Control, JoinedTypes, JoinedQueries, T, Entity>;
 
-    fn traverse<T: EdgeSide>(self, starts: Starts) -> Self::Traversal<T> {
+    fn traverse<T: EdgeSide>(self, start: Entity) -> Self::Traversal<T> {
         Operations {
             control: self.control,
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: PhantomData,
-            starts,
+            start,
+            tracked_queries: self.tracked_queries,
+            track_self: self.track_self,
             init: self.init,
             fold: self.fold,
         }
@@ -294,6 +188,8 @@ where
         JoinedQueries,
         Traversal,
         Starts,
+        (),
+        (),
         Init,
         Fold,
     >;
@@ -308,7 +204,9 @@ where
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: self.traversal,
-            starts: self.starts,
+            start: self.start,
+            tracked_queries: self.tracked_queries,
+            track_self: self.track_self,
             init,
             fold,
         }
@@ -335,6 +233,8 @@ where
         JoinedQueries,
         Traversal,
         Starts,
+        (),
+        (),
         Init,
         Fold,
     >;
@@ -349,7 +249,9 @@ where
             joined_types: self.joined_types,
             joined_queries: self.joined_queries,
             traversal: self.traversal,
-            starts: self.starts,
+            start: self.start,
+            tracked_queries: self.tracked_queries,
+            track_self: self.track_self,
             init,
             fold,
         }
@@ -473,14 +375,14 @@ where
             joined_types: PhantomData,
             joined_queries: Append::append(self.joined_queries, item),
             traversal: self.traversal,
-            starts: self.starts,
+            start: self.start,
+            tracked_queries: self.tracked_queries,
+            track_self: self.track_self,
             fold: self.fold,
             init: self.init,
         }
     }
 }
-
-pub trait Hereditary: Component {}
 
 // TODO: Compile tests for scan_breadth & track
 #[cfg(test)]
@@ -545,26 +447,26 @@ mod compile_tests {
 
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.ops()
-            .traverse::<R0>(None::<Entity>)
+            .traverse::<R0>(Entity::PLACEHOLDER)
             .for_each(|a0, a1| {});
     }
 
     fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
         left.ops_mut()
-            .traverse::<R0>(None::<Entity>)
+            .traverse::<R0>(Entity::PLACEHOLDER)
             .for_each(|a0, a1| {});
     }
 
     fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
-            .traverse::<R0>(None::<Entity>)
+            .traverse::<R0>(Entity::PLACEHOLDER)
             .join::<R1>(&right)
             .for_each(|a0, a1, b| {});
     }
 
     fn traverse_mut_joined_mut(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
         left.ops()
-            .traverse::<R0>(None::<Entity>)
+            .traverse::<R0>(Entity::PLACEHOLDER)
             .join::<R1>(&mut right)
             .for_each(|a0, a1, b| {});
     }

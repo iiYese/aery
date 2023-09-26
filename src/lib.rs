@@ -85,7 +85,7 @@
 
 use bevy::{
     app::{App, Plugin},
-    ecs::entity::Entity,
+    ecs::{component::Component, entity::Entity},
 };
 
 pub mod edges;
@@ -97,6 +97,10 @@ pub mod scope;
 pub mod tuple_traits;
 
 use events::{CleanupEvent, TargetEvent};
+
+/// Components that can be accessed by entities beyond immediate descendants in hierarchy
+/// operations.
+pub trait Hereditary: Component {}
 
 /// A type to enable wildcard APIs
 pub enum Var<T> {
@@ -146,12 +150,15 @@ impl Plugin for Aery {
 }
 
 pub mod prelude {
-    //pub use super::Var::{self, Wc};
+    pub use super::Var::{self, Wc};
     pub use crate::{
         edges::{RelationCommands, Set, Unset},
         events::{CleanupEvent, Op, TargetEvent},
         for_each::{ControlFlow, *},
-        operations::{AeryQueryExt, EdgeSide, FoldBreadth, Join, Relations, Targets, Traverse},
+        operations::{
+            utils::{EdgeSide, Relations, Targets},
+            AeryQueryExt, FoldBreadth, Join, Traverse,
+        },
         relation::{CleanupPolicy, Relation, ZstOrPanic},
         scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},

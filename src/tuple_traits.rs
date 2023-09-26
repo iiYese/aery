@@ -1,11 +1,10 @@
 use crate::{
     edges::{EdgeInfo, Edges, EdgesItem},
-    operations::{EdgeProduct, EdgeSide, RelationsItem},
+    operations::utils::{EdgeProduct, EdgeSide, RelationsItem},
     relation::{Relation, RelationId},
+    Hereditary,
 };
 use core::any::TypeId;
-
-use seq_macro::seq;
 
 use bevy::{
     ecs::{
@@ -21,7 +20,6 @@ mod sealed {
     use super::*;
     pub trait Sealed {}
 
-    impl Sealed for () {}
     impl<R: Relation> Sealed for R {}
     impl<R: Relation> Sealed for Option<R> {}
 
@@ -39,12 +37,19 @@ mod sealed {
     {
     }
 
+    /// World queries that can be tracked by other queries.
+    pub trait HereditaryWorldQuery {}
+
+    impl<C: Component + Hereditary> HereditaryWorldQuery for &'_ C {}
+    impl<C: Component + Hereditary> HereditaryWorldQuery for &'_ mut C {}
+
     macro_rules! impl_sealed {
         ($($P:ident),*) => {
-            impl<$($P: Sealed),*> Sealed for ($($P,)*) {
-            }
+            impl<$($P: Sealed),*> Sealed for ($($P,)*) {}
+            impl<$($P: HereditaryWorldQuery),*> HereditaryWorldQuery for ($($P,)*) {}
         };
     }
+
     all_tuples!(impl_sealed, 1, 16, P);
 }
 
@@ -83,11 +88,6 @@ all_tuples!(impl_append, 1, 15, P, p);
 pub trait RelationSet: Sized + Sealed {
     type Edges: ReadOnlyWorldQuery;
     type Types: 'static;
-}
-
-impl RelationSet for () {
-    type Edges = ();
-    type Types = ();
 }
 
 impl<R: Relation> RelationSet for R {
@@ -160,13 +160,13 @@ macro_rules! impl_relation_entries {
         {
             fn hosts(&self, id: RelationId) -> &[Entity] {
                 let ($($e,)*) = &self.edges;
-                $(if TypeId::of::<$P::Types>() == id.0 { return  $e.hosts() })*
+                $(if TypeId::of::<$P::Types>() == id.0 { return $e.hosts() })*
                 &[]
             }
 
             fn targets(&self, id: RelationId) -> &[Entity] {
                 let ($($e,)*) = &self.edges;
-                $(if TypeId::of::<$P::Types>() == id.0 { return  $e.targets() })*
+                $(if TypeId::of::<$P::Types>() == id.0 { return $e.targets() })*
                 &[]
             }
         }
@@ -223,7 +223,7 @@ where
     type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
 
     fn check(items: &Self, [e0]: [Entity; 1]) -> [bool; 1] {
-        [items.get(e0).is_ok()]
+        [items.contains(e0)]
     }
 
     fn join(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
@@ -239,7 +239,7 @@ where
     type Out = <Q as WorldQuery>::Item<'a>;
 
     fn check(items: &Self, [e0]: [Entity; 1]) -> [bool; 1] {
-        [items.get(e0).is_ok()]
+        [items.contains(e0)]
     }
 
     fn join(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
@@ -295,6 +295,97 @@ macro_rules! impl_joinable {
 
 all_tuples!(impl_joinable, 2, 15, P, p, e, v);
 
-pub trait HereditaryWorldQuery {}
+pub trait Trackable<'a, const N: usize>: Sealed {
+    type Out;
+    fn check(items: &Self, entity: Entity, fallback: [Entity; N]) -> [Entity; N];
+    fn retrieve(items: &'a mut Self, entities: [Entity; N]) -> Self::Out;
+}
 
-pub trait Trackable: Sealed {}
+impl<'a, Q, F> Trackable<'a, 1> for &'_ Query<'_, '_, Q, F>
+where
+    Q: WorldQuery + HereditaryWorldQuery,
+    F: ReadOnlyWorldQuery,
+{
+    type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
+
+    fn check(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
+        [if items.contains(entity) {
+            entity
+        } else {
+            fallback
+        }]
+    }
+
+    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
+        items.get(e0).unwrap()
+    }
+}
+
+impl<'a, Q, F> Trackable<'a, 1> for &'_ mut Query<'_, '_, Q, F>
+where
+    Q: WorldQuery + HereditaryWorldQuery,
+    F: ReadOnlyWorldQuery,
+{
+    type Out = <Q as WorldQuery>::Item<'a>;
+
+    fn check(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
+        [if items.contains(entity) {
+            entity
+        } else {
+            fallback
+        }]
+    }
+
+    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
+        items.get_mut(e0).unwrap()
+    }
+}
+
+impl<'a, P0> Trackable<'a, 1> for (P0,)
+where
+    P0: Sealed + Trackable<'a, 1>,
+{
+    type Out = <P0 as Trackable<'a, 1>>::Out;
+
+    fn check((p0,): &Self, entity: Entity, [e0]: [Entity; 1]) -> [Entity; 1] {
+        Trackable::check(p0, entity, [e0])
+    }
+
+    fn retrieve((p0,): &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
+        Trackable::retrieve(p0, [e0])
+    }
+}
+
+macro_rules! impl_trackable {
+    ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
+        impl<'a, $($P),*> Trackable<'a, { count!($($P )*) }> for ($($P,)*)
+        where
+            $($P: Trackable<'a, 1>,)*
+        {
+            type Out = ($(<$P as Trackable<'a, 1>>::Out,)*);
+
+            fn check(
+                ($($p,)*): &Self,
+                entity: Entity,
+                [$($e,)*]: [Entity; count!($($P )*)]
+            )
+                -> [Entity; count!($($p )*)]
+            {
+                $(let [$v] = Trackable::check($p, entity, [$e]);)*
+                [$($v,)*]
+            }
+
+            fn retrieve(
+                ($($p,)*): &'a mut Self,
+                [$($e,)*]: [Entity; count!($($P )*)]
+            )
+                -> Self::Out
+            {
+                $(let $v = Trackable::retrieve($p, [$e]);)*
+                ($($v,)*)
+            }
+        }
+    }
+}
+
+all_tuples!(impl_trackable, 2, 15, P, p, e, v);

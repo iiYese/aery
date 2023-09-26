@@ -10,7 +10,7 @@ use std::{borrow::Borrow, collections::VecDeque};
 
 use crate::{
     for_each::ControlFlow,
-    operations::{EdgeSide, Operations, Relations, RelationsItem},
+    operations::utils::{EdgeSide, Operations, Relations, RelationsItem},
 };
 
 /// A 3 arity version of [`ForEachPermutations`] for when operations feature a traversal with 1 or
@@ -34,15 +34,13 @@ pub trait ForEachPermutations3Arity<const N: usize> {
         ) -> Ret;
 }
 
-impl<Q, RS, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, T, I>
+impl<Q, RS, F, T, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, T, Entity>
 where
     Q: WorldQuery,
     RS: RelationSet,
     F: ReadOnlyWorldQuery,
     T: EdgeSide,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
     JoinedQueries: for<'a> Joinable<'a, N>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
@@ -60,11 +58,7 @@ where
             Self::P2<'p2>,
         ) -> Ret,
     {
-        let mut queue = self
-            .starts
-            .into_iter()
-            .map(|e| *e.borrow())
-            .collect::<VecDeque<Entity>>();
+        let mut queue = VecDeque::from([self.start]);
 
         'queue: while let Some(entity) = queue.pop_front() {
             let Ok((mut left_components, left_edges)) = self.control.get(entity) else {
@@ -72,11 +66,11 @@ where
             };
 
             for mid in T::entities(&left_edges) {
-                let Ok((mut mid_components, _)) = self.control.get(mid) else {
+                let Ok((mut mid_components, mid_edges)) = self.control.get(mid) else {
                     continue;
                 };
 
-                let mut edge_product = JoinedTypes::product(&left_edges);
+                let mut edge_product = JoinedTypes::product(&mid_edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -117,15 +111,19 @@ where
     }
 }
 
-impl<Q, RS, F, T, E, I, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, T, I>
+impl<Q, RS, F, T, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
+    for Operations<
+        &'_ mut Query<'_, '_, (Q, Relations<RS>), F>,
+        JoinedTypes,
+        JoinedQueries,
+        T,
+        Entity,
+    >
 where
     Q: WorldQuery,
     RS: RelationSet,
     F: ReadOnlyWorldQuery,
     T: EdgeSide,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
     JoinedTypes: Product<N>,
     JoinedQueries: for<'a> Joinable<'a, N>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
@@ -143,11 +141,7 @@ where
             Self::P2<'p2>,
         ) -> Ret,
     {
-        let mut queue = self
-            .starts
-            .into_iter()
-            .map(|e| *e.borrow())
-            .collect::<VecDeque<Entity>>();
+        let mut queue = VecDeque::from([self.start]);
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
@@ -159,12 +153,13 @@ where
 
             for mid in T::entities(&left_edges) {
                 // SAFETY: Self referential relations are impossible so this is always safe.
-                let Ok((mut mid_components, _)) = (unsafe { self.control.get_unchecked(mid) })
+                let Ok((mut mid_components, mid_edges)) =
+                    (unsafe { self.control.get_unchecked(mid) })
                 else {
                     continue;
                 };
 
-                let mut edge_product = JoinedTypes::product(&left_edges);
+                let mut edge_product = JoinedTypes::product(&mid_edges);
                 let mut matches = [false; N];
 
                 while let Some(entities) = edge_product.advance(matches) {
@@ -205,15 +200,13 @@ where
     }
 }
 
-impl<Q, RS, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, I, Init, Fold>
+impl<Q, RS, F, T, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
+    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, Entity, (), (), Init, Fold>
 where
     Q: WorldQuery,
     RS: RelationSet,
     F: ReadOnlyWorldQuery,
     T: EdgeSide,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
     Init: for<'a> FnMut(&mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>) -> Acc,
     Fold: for<'a> FnMut(
@@ -234,11 +227,7 @@ where
             Self::P2<'p2>,
         ) -> Ret,
     {
-        let mut queue = self
-            .starts
-            .into_iter()
-            .map(|e| *e.borrow())
-            .collect::<VecDeque<Entity>>();
+        let mut queue = VecDeque::from([self.start]);
 
         'queue: while let Some(entity) = queue.pop_front() {
             let Ok((mut control, relations)) = self.control.get(entity) else {
@@ -283,15 +272,23 @@ where
     }
 }
 
-impl<Q, RS, F, T, E, I, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
-    for Operations<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, I, Init, Fold>
+impl<Q, RS, F, T, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
+    for Operations<
+        &'_ mut Query<'_, '_, (Q, Relations<RS>), F>,
+        (),
+        (),
+        T,
+        Entity,
+        (),
+        (),
+        Init,
+        Fold,
+    >
 where
     Q: WorldQuery,
     RS: RelationSet,
     F: ReadOnlyWorldQuery,
     T: EdgeSide,
-    E: Borrow<Entity>,
-    I: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
     Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>) -> Acc,
     Fold: for<'a> FnMut(Acc, <Q as WorldQuery>::Item<'a>) -> Result<Acc, Err>,
@@ -309,11 +306,7 @@ where
             Self::P2<'p2>,
         ) -> Ret,
     {
-        let mut queue = self
-            .starts
-            .into_iter()
-            .map(|e| *e.borrow())
-            .collect::<VecDeque<Entity>>();
+        let mut queue = VecDeque::from([self.start]);
 
         'queue: while let Some(entity) = queue.pop_front() {
             // SAFETY: Self referential relations are impossible so this is always safe.
