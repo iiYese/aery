@@ -1,6 +1,6 @@
 use crate::{
     edges::{EdgeInfo, Edges, EdgesItem},
-    operations::utils::{EdgeProduct, EdgeSide, RelationsItem},
+    operations::utils::{EdgeProduct, EdgeSide, Relations, RelationsItem},
     relation::{Relation, RelationId},
     Hereditary,
 };
@@ -38,15 +38,19 @@ mod sealed {
     }
 
     /// World queries that can be tracked by other queries.
-    pub trait HereditaryWorldQuery {}
+    pub trait HereditaryWorldQuery: WorldQuery {}
 
+    impl<R: RelationSet> HereditaryWorldQuery for Relations<R> {}
     impl<C: Component + Hereditary> HereditaryWorldQuery for &'_ C {}
     impl<C: Component + Hereditary> HereditaryWorldQuery for &'_ mut C {}
 
     macro_rules! impl_sealed {
         ($($P:ident),*) => {
             impl<$($P: Sealed),*> Sealed for ($($P,)*) {}
-            impl<$($P: HereditaryWorldQuery),*> HereditaryWorldQuery for ($($P,)*) {}
+            impl<$($P: HereditaryWorldQuery),*> HereditaryWorldQuery for ($($P,)*)
+            where
+                Self: WorldQuery
+            {}
         };
     }
 
