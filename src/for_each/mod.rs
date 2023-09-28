@@ -17,13 +17,95 @@ pub use for_each_2arity::ForEachPermutations2Arity;
 pub use for_each_3arity::ForEachPermutations3Arity;
 pub use for_each_4arity::*;
 
-pub trait ForEachPermutations<const N: usize> {
+pub trait ForEachBreadthFirst {
     type P0<'p0>;
 
     fn for_each<Func, Ret>(self, func: Func)
     where
         Ret: Into<ControlFlow>,
-        Func: for<'p0> FnMut(Self::P0<'p0>) -> Ret;
+        Func: for<'f, 'p0> FnMut(&'f mut Self::P0<'p0>) -> Ret;
+}
+
+// ----------------------
+// Beadth first traversal
+// ----------------------
+
+impl<Q, RS, F, T> ForEachBreadthFirst
+    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, Entity>
+where
+    Q: WorldQuery,
+    RS: RelationSet,
+    F: ReadOnlyWorldQuery,
+    T: EdgeSide,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
+{
+    type P0<'p0> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'p0>;
+
+    fn for_each<Func, Ret>(self, mut func: Func)
+    where
+        Ret: Into<ControlFlow>,
+        Func: for<'f, 'p0> FnMut(&'f mut Self::P0<'p0>) -> Ret,
+    {
+        let mut queue = VecDeque::from([self.start]);
+
+        'queue: while let Some(entity) = queue.pop_front() {
+            let Ok((mut control, relations)) = self.control.get(entity) else {
+                continue;
+            };
+
+            match func(&mut control).into() {
+                ControlFlow::Exit => return,
+                ControlFlow::Conclude => {
+                    continue 'queue;
+                }
+                ControlFlow::Probe => {
+                    queue.clear();
+                }
+                _ => {}
+            }
+
+            queue.extend(T::entities(&relations));
+        }
+    }
+}
+
+impl<Q, RS, F, T> ForEachBreadthFirst
+    for Operations<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, Entity>
+where
+    Q: WorldQuery,
+    RS: RelationSet,
+    F: ReadOnlyWorldQuery,
+    T: EdgeSide,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
+{
+    type P0<'p0> = <Q as WorldQuery>::Item<'p0>;
+
+    fn for_each<Func, Ret>(self, mut func: Func)
+    where
+        Ret: Into<ControlFlow>,
+        Func: for<'f, 'p0> FnMut(&'f mut Self::P0<'p0>) -> Ret,
+    {
+        let mut queue = VecDeque::from([self.start]);
+
+        'queue: while let Some(entity) = queue.pop_front() {
+            let Ok((mut control, relations)) = self.control.get_mut(entity) else {
+                continue;
+            };
+
+            match func(&mut control).into() {
+                ControlFlow::Exit => return,
+                ControlFlow::Conclude => {
+                    continue 'queue;
+                }
+                ControlFlow::Probe => {
+                    queue.clear();
+                }
+                _ => {}
+            }
+
+            queue.extend(T::entities(&relations));
+        }
+    }
 }
 
 #[cfg_attr(doc, aquamarine::aquamarine)]

@@ -45,6 +45,10 @@ pub trait ForEachPermutations2Arity<const N: usize> {
         Func: for<'f, 'p0, 'p1> FnMut(&'f mut Self::P0<'p0>, Self::P1<'p1>) -> Ret;
 }
 
+// -----
+// Joins
+// -----
+
 impl<Q, RS, F, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations2Arity<N>
     for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, ()>
 where
@@ -140,6 +144,11 @@ where
         }
     }
 }
+
+// ------------------------
+// - Beadth first traversal
+// - Self tracking
+// ------------------------
 
 impl<Q, RS, F, T> ForEachPermutations2Arity<0>
     for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, Entity, (), SelfTracking>

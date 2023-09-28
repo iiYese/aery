@@ -34,6 +34,12 @@ pub trait ForEachPermutations3Arity<const N: usize> {
         ) -> Ret;
 }
 
+// ------------------------
+// - Beadth first traversal
+// - Self tracking
+// - Joins
+// ------------------------
+
 impl<Q, RS, F, T, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
     for Operations<
         &'_ Query<'_, '_, (Q, Relations<RS>), F>,
@@ -209,6 +215,12 @@ where
         }
     }
 }
+
+// ------------------------
+// - Beadth first traversal
+// - Self tracking
+// - Scan breadth
+// ------------------------
 
 impl<Q, RS, F, T, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
     for Operations<
