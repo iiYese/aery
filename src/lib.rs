@@ -156,8 +156,8 @@ pub mod prelude {
         events::{CleanupEvent, Op, TargetEvent},
         for_each::{ControlFlow, *},
         operations::{
-            utils::{EdgeSide, Relations, Targets},
-            AeryQueryExt, FoldBreadth, Join, Traverse,
+            utils::{EdgeSide, Relations, Up},
+            AeryQueryExt, FoldBreadth, Join, TrackSelf, Traverse,
         },
         relation::{CleanupPolicy, Relation, ZstOrPanic},
         scope::{EntityMutExt, Scope},

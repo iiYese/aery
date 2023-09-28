@@ -40,7 +40,7 @@ where
             traversal: PhantomData,
             start: (),
             tracked_queries: (),
-            track_self: (),
+            track_self: PhantomData,
             init: (),
             fold: (),
         }
@@ -57,7 +57,7 @@ where
             traversal: PhantomData,
             start: (),
             tracked_queries: (),
-            track_self: (),
+            track_self: PhantomData,
             init: (),
             fold: (),
         }
@@ -354,8 +354,9 @@ where
     fn join<T: EdgeSide>(self, item: Item) -> Self::Joined<T>;
 }
 
-impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Roots> Join<Item>
-    for Operations<Control, JoinedTypes, JoinedQueries, Traversal, Roots>
+impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Start, TrackedQueries, TrackSelf>
+    Join<Item>
+    for Operations<Control, JoinedTypes, JoinedQueries, Traversal, Start, TrackedQueries, TrackSelf>
 where
     Item: for<'a> Joinable<'a, 1>,
     JoinedTypes: Append,
@@ -366,7 +367,9 @@ where
         <JoinedTypes as Append>::Out<T>,
         <JoinedQueries as Append>::Out<Item>,
         Traversal,
-        Roots,
+        Start,
+        TrackedQueries,
+        TrackSelf,
     >;
 
     fn join<T: EdgeSide>(self, item: Item) -> Self::Joined<T> {
@@ -378,6 +381,39 @@ where
             start: self.start,
             tracked_queries: self.tracked_queries,
             track_self: self.track_self,
+            fold: self.fold,
+            init: self.init,
+        }
+    }
+}
+
+pub trait TrackSelf {
+    type Out;
+    fn track_self(self) -> Self::Out;
+}
+
+impl<Control, JoinedTypes, JoinedQueries, Traversal, Starts, TrackedQueries> TrackSelf
+    for Operations<Control, JoinedTypes, JoinedQueries, Traversal, Starts, TrackedQueries, ()>
+{
+    type Out = Operations<
+        Control,
+        JoinedTypes,
+        JoinedQueries,
+        Traversal,
+        Starts,
+        TrackedQueries,
+        SelfTracking,
+    >;
+
+    fn track_self(self) -> Self::Out {
+        Operations {
+            control: self.control,
+            joined_types: self.joined_types,
+            joined_queries: self.joined_queries,
+            traversal: self.traversal,
+            start: self.start,
+            tracked_queries: self.tracked_queries,
+            track_self: PhantomData,
             fold: self.fold,
             init: self.init,
         }
@@ -448,18 +484,21 @@ mod compile_tests {
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.ops()
             .traverse::<R0>(Entity::PLACEHOLDER)
+            .track_self()
             .for_each(|a0, a1| {});
     }
 
     fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
         left.ops_mut()
             .traverse::<R0>(Entity::PLACEHOLDER)
+            .track_self()
             .for_each(|a0, a1| {});
     }
 
     fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
         left.ops()
             .traverse::<R0>(Entity::PLACEHOLDER)
+            .track_self()
             .join::<R1>(&right)
             .for_each(|a0, a1, b| {});
     }
@@ -468,6 +507,7 @@ mod compile_tests {
         left.ops()
             .traverse::<R0>(Entity::PLACEHOLDER)
             .join::<R1>(&mut right)
+            .track_self()
             .for_each(|a0, a1, b| {});
     }
 
@@ -551,9 +591,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Targets<R0>>(&mut a)
-                .join::<Targets<R1>>(&mut b)
-                .join::<Targets<R2>>(&mut c)
+                .join::<Up<R0>>(&mut a)
+                .join::<Up<R1>>(&mut b)
+                .join::<Up<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -630,9 +670,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Targets<R0>>(&mut a)
-                .join::<Targets<R1>>(&mut b)
-                .join::<Targets<R2>>(&mut c)
+                .join::<Up<R0>>(&mut a)
+                .join::<Up<R1>>(&mut b)
+                .join::<Up<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -713,9 +753,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Targets<R0>>(&mut a)
-                .join::<Targets<R1>>(&mut b)
-                .join::<Targets<R2>>(&mut c)
+                .join::<Up<R0>>(&mut a)
+                .join::<Up<R1>>(&mut b)
+                .join::<Up<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;
@@ -789,9 +829,9 @@ mod tests {
             mut c: Query<&mut C>,
         ) {
             left.ops()
-                .join::<Targets<R0>>(&mut a)
-                .join::<Targets<R1>>(&mut b)
-                .join::<Targets<R2>>(&mut c)
+                .join::<Up<R0>>(&mut a)
+                .join::<Up<R1>>(&mut b)
+                .join::<Up<R2>>(&mut c)
                 .for_each(|_, (mut a, mut b, mut c)| {
                     a.0 += 1;
                     b.0 += 1;

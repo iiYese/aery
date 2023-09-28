@@ -10,7 +10,7 @@ use std::{borrow::Borrow, collections::VecDeque};
 
 use crate::{
     for_each::ControlFlow,
-    operations::utils::{EdgeSide, Operations, Relations, RelationsItem},
+    operations::utils::{EdgeSide, Operations, Relations, RelationsItem, SelfTracking},
 };
 
 /// A 3 arity version of [`ForEachPermutations`] for when operations feature a traversal with 1 or
@@ -35,7 +35,15 @@ pub trait ForEachPermutations3Arity<const N: usize> {
 }
 
 impl<Q, RS, F, T, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutations3Arity<N>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, JoinedTypes, JoinedQueries, T, Entity>
+    for Operations<
+        &'_ Query<'_, '_, (Q, Relations<RS>), F>,
+        JoinedTypes,
+        JoinedQueries,
+        T,
+        Entity,
+        (),
+        SelfTracking,
+    >
 where
     Q: WorldQuery,
     RS: RelationSet,
@@ -118,6 +126,8 @@ impl<Q, RS, F, T, JoinedTypes, JoinedQueries, const N: usize> ForEachPermutation
         JoinedQueries,
         T,
         Entity,
+        (),
+        SelfTracking,
     >
 where
     Q: WorldQuery,
@@ -201,7 +211,17 @@ where
 }
 
 impl<Q, RS, F, T, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
-    for Operations<&'_ Query<'_, '_, (Q, Relations<RS>), F>, (), (), T, Entity, (), (), Init, Fold>
+    for Operations<
+        &'_ Query<'_, '_, (Q, Relations<RS>), F>,
+        (),
+        (),
+        T,
+        Entity,
+        (),
+        SelfTracking,
+        Init,
+        Fold,
+    >
 where
     Q: WorldQuery,
     RS: RelationSet,
@@ -280,7 +300,7 @@ impl<Q, RS, F, T, Acc, Err, Init, Fold> ForEachPermutations3Arity<0>
         T,
         Entity,
         (),
-        (),
+        SelfTracking,
         Init,
         Fold,
     >

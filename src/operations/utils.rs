@@ -8,7 +8,7 @@ use bevy::ecs::{entity::Entity, query::WorldQuery};
 
 use std::marker::PhantomData;
 
-pub struct TrackSelf;
+pub struct SelfTracking;
 
 /// Struct that is used to track metadata for relation operations.
 pub struct Operations<
@@ -28,7 +28,7 @@ pub struct Operations<
     pub(crate) traversal: PhantomData<Traversal>,
     pub(crate) start: Starts,
     pub(crate) tracked_queries: TrackedQueries,
-    pub(crate) track_self: TrackSelf,
+    pub(crate) track_self: PhantomData<TrackSelf>,
     pub(crate) init: Init,
     pub(crate) fold: Fold,
 }
@@ -85,7 +85,7 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
     }
 }
 
-pub struct Targets<R>(PhantomData<R>);
+pub struct Up<R>(PhantomData<R>);
 
 pub trait EdgeSide {
     const DESCENT_OR_PANIC: ();
@@ -110,7 +110,7 @@ impl<R: Relation> EdgeSide for R {
     }
 }
 
-impl<R: Relation> EdgeSide for Targets<R> {
+impl<R: Relation> EdgeSide for Up<R> {
     const DESCENT_OR_PANIC: () = {
         panic!("Operation not supported for ascent");
     };
