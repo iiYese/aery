@@ -45,6 +45,16 @@ pub trait ForEachPermutations2Arity<const N: usize> {
         Func: for<'f, 'p0, 'p1> FnMut(&'f mut Self::P0<'p0>, Self::P1<'p1>) -> Ret;
 }
 
+pub trait ForEachTraversals2Arity<const N: usize> {
+    type P0<'p0>;
+    type P1<'p1>;
+
+    fn for_each<Func, Ret>(self, func: Func)
+    where
+        Ret: Into<TCF>,
+        Func: for<'f, 'p0, 'p1> FnMut(&'f mut Self::P0<'p0>, Self::P1<'p1>) -> Ret;
+}
+
 // -----
 // Joins
 // -----

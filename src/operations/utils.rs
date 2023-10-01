@@ -10,27 +10,26 @@ use std::marker::PhantomData;
 
 pub struct SelfTracking;
 
-/// Struct that is used to track metadata for relation operations.
-pub struct Operations<
+pub struct JoinWith<Relations, JoinEdges, JoinItems> {
+    pub(crate) relations: Relations,
+    pub(crate) edges: PhantomData<JoinEdges>,
+    pub(crate) items: JoinItems,
+}
+
+pub struct TraverseAnd<
     Control,
-    JoinedTypes = (),
-    JoinedQueries = (),
-    Traversal = (),
-    Starts = (),
-    TrackedQueries = (),
-    TrackSelf = (),
+    Edge,
+    Tracked = (),
+    const SELFTRACK: bool = false,
     Init = (),
     Fold = (),
 > {
     pub(crate) control: Control,
-    pub(crate) joined_types: PhantomData<JoinedTypes>,
-    pub(crate) joined_queries: JoinedQueries,
-    pub(crate) traversal: PhantomData<Traversal>,
-    pub(crate) start: Starts,
-    pub(crate) tracked_queries: TrackedQueries,
-    pub(crate) track_self: PhantomData<TrackSelf>,
-    pub(crate) init: Init,
-    pub(crate) fold: Fold,
+    pub(crate) edge: PhantomData<Edge>,
+    pub(crate) start: Entity,
+    pub(crate) track: Tracked,
+    pub(crate) scan_init: Init,
+    pub(crate) scan_fold: Fold,
 }
 
 /// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single

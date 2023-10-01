@@ -154,10 +154,10 @@ pub mod prelude {
     pub use crate::{
         edges::{RelationCommands, Set, Unset},
         events::{CleanupEvent, Op, TargetEvent},
-        for_each::{ControlFlow, *},
+        for_each::*,
         operations::{
             utils::{EdgeSide, Relations, Up},
-            AeryQueryExt, FoldBreadth, Join, TrackSelf, Traverse,
+            FoldBreadth, Join, TrackSelf, Traverse,
         },
         relation::{CleanupPolicy, Relation, ZstOrPanic},
         scope::{EntityMutExt, Scope},

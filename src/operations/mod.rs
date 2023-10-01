@@ -11,378 +11,42 @@ use std::{borrow::Borrow, marker::PhantomData};
 pub mod utils;
 use utils::*;
 
-/// An extension trait to turn `Query<(X, Relations<R>)>`s into [`Operations`]s which have the
-/// trait implementations to build relation operations. This query is called the "control query".
-/// The [`RelationSet`] `R` from this query is what is used for joins and traversals any `T` in a
-/// subsequent `.join::<T>(_)` or `.traverse::<T>(_)` call must be present in `R`.
-/// Also see [`Join`] and [`Traverse`].
-pub trait AeryQueryExt {
-    /// Provides read only access to the left portion of the [`Query`] tuple.
-    fn ops(&self) -> Operations<&Self>;
-    /// Provides mutable access to the left portion of the [`Query`] tuple.
-    fn ops_mut(&mut self) -> Operations<&mut Self>;
-}
-
-impl<'w, 's, Q, F, RS> AeryQueryExt for Query<'w, 's, (Q, Relations<RS>), F>
-where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
-    RS: RelationSet,
-{
-    #[allow(clippy::let_unit_value)]
-    fn ops(&self) -> Operations<&Self> {
-        let _ = RS::ZST_OR_PANIC;
-
-        Operations {
-            control: self,
-            joined_types: PhantomData,
-            joined_queries: (),
-            traversal: PhantomData,
-            start: (),
-            tracked_queries: (),
-            track_self: PhantomData,
-            init: (),
-            fold: (),
-        }
-    }
-
-    #[allow(clippy::let_unit_value)]
-    fn ops_mut(&mut self) -> Operations<&mut Self> {
-        let _ = RS::ZST_OR_PANIC;
-
-        Operations {
-            control: self,
-            joined_types: PhantomData,
-            joined_queries: (),
-            traversal: PhantomData,
-            start: (),
-            tracked_queries: (),
-            track_self: PhantomData,
-            init: (),
-            fold: (),
-        }
-    }
-}
-
-/// The traversal functionality of the operations API. Any `T` in `traverse::<T>(roots)` must
-/// be present in the [`RelationSet`] of the control query. Diamonds are impossible with `Exclusive`
-/// relations where the edges face bottom up instead of top down. For this reason all of Aery's
-/// APIs are opinionated with implicit defaults to prefer bottom up edges.
-///
-/// To descend is to traverse hosts and to ascend is to traverse targets. Descent is breadth first
-/// and since relations support multi arity ascent is also breadth first. Ascending exclusive
-/// relations is to ascend parents as the "breadth" is always `1`.
-///
-/// Traversals will not check for cycles or diamonds (possible with multi relations). Cycles will
-/// infinite loop and entities may be traversed multiple times for diamonds.
-///
-/// See [`Join`] for joining queries and:
-/// - [`ForEachPermutations`] for operations with just traversals.
-/// - [`ForEachPermutations3Arity`] for operations with traversals and joins.
-///
-/// # Illustration:
-/// ```
-/// use bevy::prelude::*;
-/// use aery::prelude::*;
-///
-/// #[derive(Component)]
-/// struct A;
-///
-/// #[derive(Relation)]
-/// #[cleanup(policy = "Recursive")]
-/// struct R;
-///
-/// #[derive(Relation)]
-/// #[cleanup(policy = "Orphan")]
-/// struct O;
-///
-/// fn setup(mut commands: Commands) {
-///     commands.add(|wrld: &mut World| {
-///         wrld.spawn_empty()
-///             .scope::<O>(|parent, ent1| {
-///                 ent1.set::<R>(parent)
-///                     .scope::<O>(|parent, ent3| {})
-///                     .scope::<O>(|parent, ent4| { ent4.set::<R>(parent); });
-///             })
-///             .scope::<O>(|_, ent2| {
-///                 ent2.scope::<R>(|_, ent5| {})
-///                     .scope::<R>(|_, ent6| {});
-///             });
-///     });
-///
-///     //  Will construct the following graph:
-///     //
-///     //        0
-///     //       / \
-///     //      /   \
-///     //     /     \
-///     //    1       2
-///     //   / \     / \
-///     //  3   4   5   6
-/// }
-///
-/// fn sys(a: Query<(&A, Relations<R>)>, roots: Query<Entity, Root<R>>) {
-///     a.ops().traverse::<R>(roots.iter()).for_each(|a_ancestor, a| {
-///         // Will traverse in the following order:
-///         // (a_ancestor, a) == (0, 1)
-///         // (a_ancestor, a) == (0, 2)
-///         // (a_ancestor, a) == (1, 3)
-///         // (a_ancestor, a) == (1, 4)
-///         // (a_ancestor, a) == (2, 5)
-///         // (a_ancestor, a) == (2, 6)
-///     })
-/// }
-/// ```
 pub trait Traverse {
-    type Traversal<T: EdgeSide>;
-    fn traverse<T: EdgeSide>(self, start: Entity) -> Self::Traversal<T>;
+    fn traverse<Edge: EdgeSide>(&self, start: Entity) -> TraverseAnd<&'_ Self, Edge>;
+    fn traverse_mut<Edge: EdgeSide>(&mut self, start: Entity) -> TraverseAnd<&'_ mut Self, Edge>;
 }
 
-impl<Control, JoinedTypes, JoinedQueries> Traverse
-    for Operations<Control, JoinedTypes, JoinedQueries>
+impl<Q, RS, F> Traverse for Query<'_, '_, (Q, Relations<RS>), F>
+where
+    Q: WorldQuery,
+    F: ReadOnlyWorldQuery,
+    RS: RelationSet,
 {
-    type Traversal<T: EdgeSide> = Operations<Control, JoinedTypes, JoinedQueries, T, Entity>;
+    fn traverse<Edge: EdgeSide>(&self, start: Entity) -> TraverseAnd<&'_ Self, Edge> {
+        let _ = RS::ZST_OR_PANIC;
+        let _ = Edge::ZST_OR_PANIC;
 
-    fn traverse<T: EdgeSide>(self, start: Entity) -> Self::Traversal<T> {
-        Operations {
-            control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: PhantomData,
+        TraverseAnd {
+            control: self,
+            edge: PhantomData,
             start,
-            tracked_queries: self.tracked_queries,
-            track_self: self.track_self,
-            init: self.init,
-            fold: self.fold,
+            track: (),
+            scan_init: (),
+            scan_fold: (),
         }
     }
-}
 
-pub trait FoldBreadth {
-    type In<'i>;
-    type Out<Init, Fold>;
+    fn traverse_mut<Edge: EdgeSide>(&mut self, start: Entity) -> TraverseAnd<&'_ mut Self, Edge> {
+        let _ = RS::ZST_OR_PANIC;
+        let _ = Edge::ZST_OR_PANIC;
 
-    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
-    where
-        Init: FnMut(&mut Self::In<'_>) -> Acc,
-        Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>;
-}
-
-impl<'a, 'w, 's, Q, RS, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
-    for Operations<
-        &'a Query<'w, 's, (Q, Relations<RS>), F>,
-        JoinedTypes,
-        JoinedQueries,
-        Traversal,
-        Starts,
-    >
-where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
-    RS: RelationSet,
-{
-    type In<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
-    type Out<Init, Fold> = Operations<
-        &'a Query<'w, 's, (Q, Relations<RS>), F>,
-        JoinedTypes,
-        JoinedQueries,
-        Traversal,
-        Starts,
-        (),
-        (),
-        Init,
-        Fold,
-    >;
-
-    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
-    where
-        Init: FnMut(&mut Self::In<'_>) -> Acc,
-        Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>,
-    {
-        Operations {
-            control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: self.traversal,
-            start: self.start,
-            tracked_queries: self.tracked_queries,
-            track_self: self.track_self,
-            init,
-            fold,
-        }
-    }
-}
-
-impl<'a, 'w, 's, Q, RS, F, JoinedTypes, JoinedQueries, Traversal, Starts> FoldBreadth
-    for Operations<
-        &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
-        JoinedTypes,
-        JoinedQueries,
-        Traversal,
-        Starts,
-    >
-where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
-    RS: RelationSet,
-{
-    type In<'i> = <Q as WorldQuery>::Item<'i>;
-    type Out<Init, Fold> = Operations<
-        &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
-        JoinedTypes,
-        JoinedQueries,
-        Traversal,
-        Starts,
-        (),
-        (),
-        Init,
-        Fold,
-    >;
-
-    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
-    where
-        Init: FnMut(&mut Self::In<'_>) -> Acc,
-        Fold: FnMut(Acc, Self::In<'_>) -> Result<Acc, E>,
-    {
-        Operations {
-            control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: self.traversal,
-            start: self.start,
-            tracked_queries: self.tracked_queries,
-            track_self: self.track_self,
-            init,
-            fold,
-        }
-    }
-}
-
-/// The `join` functionality of the operations API. Any `T` in `join::<T>(query)` must be present
-/// in the [`RelationSet`] of the control query. The type of join performed is what's known as an
-/// "inner join" which produces permutations of all matched entiteis.
-///
-/// See [`Traverse`] for traversing hierarchies and:
-/// - [`ForEachPermutations`] for operations with just joins.
-/// - [`ForEachPermutations3Arity`] for operations with joins and traversals.
-///
-/// # Illustration:
-/// ```
-/// use bevy::prelude::*;
-/// use aery::prelude::*;
-///
-/// #[derive(Component)]
-/// struct A(&'static str);
-///
-/// #[derive(Component)]
-/// struct B(&'static str);
-///
-/// #[derive(Component)]
-/// struct C(&'static str);
-///
-/// #[derive(Relation)]
-/// struct R0;
-///
-///
-/// #[derive(Relation)]
-/// #[multi]
-/// struct R1;
-///
-/// fn sys(a: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
-///     a.ops()
-///         .join::<R0>(&b)
-///         .join::<R1>(&c)
-///         .for_each(|a, (b, c)| {
-///             // stuff
-///         })
-///
-///     //  If we used the "Entity in Component" pattern the equivalent without Aery would be:
-///     //  for (a, r0s, r1s) in &a {
-///     //      for r0 in r0s {
-///     //          let Ok(b) = b.get(*r0) else {
-///     //              continue
-///     //          };
-///     //
-///     //          for r1 in r1s {
-///     //              let Ok(c) = c.get(*r1) else {
-///     //                  continue
-///     //              };
-///     //
-///     //              // stuff
-///     //
-///     //          }
-///     //      }
-///     //  }
-/// }
-/// ```
-/// **If `a: Query<(&A, Relations<(R0, R1)>)>`:**
-///
-/// | entityid  | A     | R0    | R1        |
-/// |-----------|-------|-------|-----------|
-/// | 0         | `"X"` | 3     | 6, 10, 7  |
-/// | 1         | `"Y"` | 4     | 5, 6      |
-/// | 2         | `"Z"` | 5     | 9         |
-///
-/// **and `b: Query<&B>`:**
-///
-/// | entityid  | B             |
-/// |-----------|---------------|
-/// | 3         | `"foo"`       |
-/// | 5         | `"bar"`       |
-///
-/// **and `c: Query<&C>`:**
-///
-/// | entityid  | C             |
-/// |-----------|---------------|
-/// | 6         | `"baz"`       |
-/// | 7         | `"qux"`       |
-/// | 8         | `"corge"`     |
-/// | 9         | `"grault"`    |
-///
-/// **then `a.ops().join::<R0>(&b).join::<R1>(&c)`:**
-///
-/// | a     | b         | c         |
-/// |-------|-----------|-----------|
-/// | `"X"` | `"foo"`   | "baz"     |
-/// | `"X"` | `"foo"`   | "qux"     |
-/// | `"Z"` | `"bar"`   | "grault"  |
-pub trait Join<Item>
-where
-    Item: for<'a> Joinable<'a, 1>,
-{
-    type Joined<T: EdgeSide>;
-    fn join<T: EdgeSide>(self, item: Item) -> Self::Joined<T>;
-}
-
-impl<Item, Control, JoinedTypes, JoinedQueries, Traversal, Start, TrackedQueries, TrackSelf>
-    Join<Item>
-    for Operations<Control, JoinedTypes, JoinedQueries, Traversal, Start, TrackedQueries, TrackSelf>
-where
-    Item: for<'a> Joinable<'a, 1>,
-    JoinedTypes: Append,
-    JoinedQueries: Append,
-{
-    type Joined<T: EdgeSide> = Operations<
-        Control,
-        <JoinedTypes as Append>::Out<T>,
-        <JoinedQueries as Append>::Out<Item>,
-        Traversal,
-        Start,
-        TrackedQueries,
-        TrackSelf,
-    >;
-
-    fn join<T: EdgeSide>(self, item: Item) -> Self::Joined<T> {
-        Operations {
-            control: self.control,
-            joined_types: PhantomData,
-            joined_queries: Append::append(self.joined_queries, item),
-            traversal: self.traversal,
-            start: self.start,
-            tracked_queries: self.tracked_queries,
-            track_self: self.track_self,
-            fold: self.fold,
-            init: self.init,
+        TraverseAnd {
+            control: self,
+            edge: PhantomData,
+            start,
+            track: (),
+            scan_init: (),
+            scan_fold: (),
         }
     }
 }
@@ -392,30 +56,128 @@ pub trait TrackSelf {
     fn track_self(self) -> Self::Out;
 }
 
-impl<Control, JoinedTypes, JoinedQueries, Traversal, Starts, TrackedQueries> TrackSelf
-    for Operations<Control, JoinedTypes, JoinedQueries, Traversal, Starts, TrackedQueries, ()>
-{
-    type Out = Operations<
-        Control,
-        JoinedTypes,
-        JoinedQueries,
-        Traversal,
-        Starts,
-        TrackedQueries,
-        SelfTracking,
-    >;
+impl<Control, Edge, Tracked> TrackSelf for TraverseAnd<Control, Edge, Tracked> {
+    type Out = TraverseAnd<Control, Edge, Tracked, true>;
 
     fn track_self(self) -> Self::Out {
-        Operations {
+        TraverseAnd {
             control: self.control,
-            joined_types: self.joined_types,
-            joined_queries: self.joined_queries,
-            traversal: self.traversal,
+            edge: PhantomData,
             start: self.start,
-            tracked_queries: self.tracked_queries,
-            track_self: PhantomData,
-            fold: self.fold,
-            init: self.init,
+            track: self.track,
+            scan_init: (),
+            scan_fold: (),
+        }
+    }
+}
+
+// TODO tracking variants
+pub trait FoldBreadth {
+    type FnIn<'i>;
+    type Out<Init, Fold>;
+
+    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
+    where
+        Init: FnMut(&mut Self::FnIn<'_>) -> Acc,
+        Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>;
+}
+
+impl<'a, 'w, 's, Q, RS, F, Edge> FoldBreadth
+    for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true>
+where
+    Q: WorldQuery,
+    F: ReadOnlyWorldQuery,
+    RS: RelationSet,
+{
+    type FnIn<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
+    type Out<Init, Fold> =
+        TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true, Init, Fold>;
+
+    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
+    where
+        Init: FnMut(&mut Self::FnIn<'_>) -> Acc,
+        Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>,
+    {
+        TraverseAnd {
+            control: self.control,
+            edge: PhantomData,
+            start: self.start,
+            track: self.track,
+            scan_init: init,
+            scan_fold: fold,
+        }
+    }
+}
+
+impl<'a, 'w, 's, Q, RS, F, Edge> FoldBreadth
+    for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true>
+where
+    Q: WorldQuery,
+    F: ReadOnlyWorldQuery,
+    RS: RelationSet,
+{
+    type FnIn<'i> = <Q as WorldQuery>::Item<'i>;
+    type Out<Init, Fold> =
+        TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true, Init, Fold>;
+
+    fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
+    where
+        Init: FnMut(&mut Self::FnIn<'_>) -> Acc,
+        Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>,
+    {
+        TraverseAnd {
+            control: self.control,
+            edge: PhantomData,
+            start: self.start,
+            track: self.track,
+            scan_init: init,
+            scan_fold: fold,
+        }
+    }
+}
+
+pub trait Join<Item>
+where
+    Item: for<'a> Joinable<'a, 1>,
+{
+    type Out<Edge: EdgeSide>;
+    fn join<Edge: EdgeSide>(self, item: Item) -> Self::Out<Edge>;
+}
+
+impl<RS, Item> Join<Item> for &'_ RelationsItem<'_, RS>
+where
+    RS: RelationSet,
+    Item: for<'a> Joinable<'a, 1>,
+{
+    type Out<Edge: EdgeSide> = JoinWith<Self, (Edge,), (Item,)>;
+
+    fn join<Edge: EdgeSide>(self, item: Item) -> Self::Out<Edge> {
+        let _ = Edge::ZST_OR_PANIC;
+
+        JoinWith {
+            relations: self,
+            edges: PhantomData,
+            items: (item,),
+        }
+    }
+}
+
+impl<RI, Edges, Items, Item> Join<Item> for JoinWith<RI, Edges, Items>
+where
+    Item: for<'a> Joinable<'a, 1>,
+    Edges: Append,
+    Items: Append,
+{
+    type Out<Edge: EdgeSide> =
+        JoinWith<RI, <Edges as Append>::Out<Edge>, <Items as Append>::Out<Item>>;
+
+    fn join<Edge: EdgeSide>(self, item: Item) -> Self::Out<Edge> {
+        let _ = Edge::ZST_OR_PANIC;
+
+        JoinWith {
+            relations: self.relations,
+            edges: PhantomData,
+            items: Append::append(self.items, item),
         }
     }
 }
@@ -445,7 +207,7 @@ mod compile_tests {
     #[derive(Relation)]
     struct R1;
 
-    fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
+    /*fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
         left.ops()
             .join::<R0>(&b)
             .join::<R1>(&c)
@@ -486,9 +248,33 @@ mod compile_tests {
             .traverse::<R0>(Entity::PLACEHOLDER)
             .track_self()
             .for_each(|a0, a1| {});
+    }*/
+
+    fn traverse_join_imperative_ii(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+        left.traverse::<R0>(Entity::PLACEHOLDER)
+            .for_each(|(a, rels)| {
+                rels.join::<R1>(&right).for_each(|right| {});
+            });
     }
 
-    fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
+    fn traverse_join_imperative_im(
+        left: Query<(&A, Relations<(R0, R1)>)>,
+        mut right: Query<&mut B>,
+    ) {
+        left.traverse::<R0>(Entity::PLACEHOLDER)
+            .for_each(|(a, rels)| {
+                rels.join::<R1>(&mut right).for_each(|right| {});
+            });
+    }
+
+    fn traverse_join_imperative_mi(mut left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+        left.traverse_mut::<R0>(Entity::PLACEHOLDER)
+            .for_each(|(a, rels)| {
+                rels.join::<R1>(&right).for_each(|right| {});
+            });
+    }
+
+    /*fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
         left.ops_mut()
             .traverse::<R0>(Entity::PLACEHOLDER)
             .track_self()
@@ -516,10 +302,10 @@ mod compile_tests {
             .join::<R0>(&b)
             .join::<R1>(&c)
             .for_each(|a, (b, c)| {});
-    }
+    }*/
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use crate::{self as aery, prelude::*};
     use bevy::{app::AppExit, prelude::*};
@@ -862,4 +648,4 @@ mod tests {
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
-}
+}*/
