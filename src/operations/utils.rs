@@ -19,6 +19,7 @@ pub struct JoinWith<Relations, JoinEdges, JoinItems> {
 pub struct TraverseAnd<
     Control,
     Edge,
+    Starts,
     Tracked = (),
     const SELFTRACK: bool = false,
     Init = (),
@@ -26,7 +27,7 @@ pub struct TraverseAnd<
 > {
     pub(crate) control: Control,
     pub(crate) edge: PhantomData<Edge>,
-    pub(crate) start: Entity,
+    pub(crate) starts: Starts,
     pub(crate) track: Tracked,
     pub(crate) scan_init: Init,
     pub(crate) scan_fold: Fold,
@@ -87,8 +88,6 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
 pub struct Up<R>(PhantomData<R>);
 
 pub trait EdgeSide {
-    const DESCENT_OR_PANIC: ();
-
     fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
     where
         'i: 'r,
@@ -97,8 +96,6 @@ pub trait EdgeSide {
 }
 
 impl<R: Relation> EdgeSide for R {
-    const DESCENT_OR_PANIC: () = ();
-
     fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
     where
         'i: 'r,
@@ -110,10 +107,6 @@ impl<R: Relation> EdgeSide for R {
 }
 
 impl<R: Relation> EdgeSide for Up<R> {
-    const DESCENT_OR_PANIC: () = {
-        panic!("Operation not supported for ascent");
-    };
-
     fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
     where
         'i: 'r,

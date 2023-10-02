@@ -24,7 +24,6 @@ pub struct Scope<'w, T> {
     _phantom: PhantomData<T>,
 }
 
-#[allow(clippy::should_implement_trait)]
 impl<R: Relation> Scope<'_, R> {
     pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
         let id = self.world.spawn(bundle).id();
@@ -66,6 +65,9 @@ impl<R: Relation> Scope<'_, R> {
         self.last = id;
         self
     }
+
+    pub fn recieve(&mut self, entity: Entity) {}
+    pub fn target(&mut self, entity: Entity) {}
 }
 
 impl<'a, T: Relation> Scope<'a, T> {

@@ -2,7 +2,7 @@ use crate::{
     edges::{EdgeInfo, Edges, EdgesItem},
     operations::utils::{EdgeProduct, EdgeSide, Relations, RelationsItem},
     relation::{Relation, RelationId},
-    Hereditary,
+    Remote,
 };
 use core::any::TypeId;
 
@@ -37,17 +37,17 @@ mod sealed {
     {
     }
 
-    /// World queries that can be tracked by other queries.
-    pub trait HereditaryWorldQuery: WorldQuery {}
+    /// World queries with [`Remote`] [`Component`]s.
+    pub trait RemoteWorldQuery: WorldQuery {}
 
-    impl<R: RelationSet> HereditaryWorldQuery for Relations<R> {}
-    impl<C: Component + Hereditary> HereditaryWorldQuery for &'_ C {}
-    impl<C: Component + Hereditary> HereditaryWorldQuery for &'_ mut C {}
+    impl<R: RelationSet> RemoteWorldQuery for Relations<R> {}
+    impl<C: Component + Remote> RemoteWorldQuery for &'_ C {}
+    impl<C: Component + Remote> RemoteWorldQuery for &'_ mut C {}
 
     macro_rules! impl_sealed {
         ($($P:ident),*) => {
             impl<$($P: Sealed),*> Sealed for ($($P,)*) {}
-            impl<$($P: HereditaryWorldQuery),*> HereditaryWorldQuery for ($($P,)*)
+            impl<$($P: RemoteWorldQuery),*> RemoteWorldQuery for ($($P,)*)
             where
                 Self: WorldQuery
             {}
@@ -301,18 +301,18 @@ all_tuples!(impl_joinable, 2, 15, P, p, e, v);
 
 pub trait Trackable<'a, const N: usize>: Sealed {
     type Out;
-    fn check(items: &Self, entity: Entity, fallback: [Entity; N]) -> [Entity; N];
-    fn retrieve(items: &'a mut Self, entities: [Entity; N]) -> Self::Out;
+    fn update(items: &Self, entity: Entity, fallback: [Entity; N]) -> [Entity; N];
+    fn retrieve(items: &'a mut Self, entities: [Entity; N]) -> Option<Self::Out>;
 }
 
 impl<'a, Q, F> Trackable<'a, 1> for &'_ Query<'_, '_, Q, F>
 where
-    Q: WorldQuery + HereditaryWorldQuery,
+    Q: WorldQuery + RemoteWorldQuery,
     F: ReadOnlyWorldQuery,
 {
     type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
 
-    fn check(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
+    fn update(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
         [if items.contains(entity) {
             entity
         } else {
@@ -320,19 +320,19 @@ where
         }]
     }
 
-    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
-        items.get(e0).unwrap()
+    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Option<Self::Out> {
+        items.get(e0).ok()
     }
 }
 
 impl<'a, Q, F> Trackable<'a, 1> for &'_ mut Query<'_, '_, Q, F>
 where
-    Q: WorldQuery + HereditaryWorldQuery,
+    Q: WorldQuery + RemoteWorldQuery,
     F: ReadOnlyWorldQuery,
 {
     type Out = <Q as WorldQuery>::Item<'a>;
 
-    fn check(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
+    fn update(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
         [if items.contains(entity) {
             entity
         } else {
@@ -340,8 +340,8 @@ where
         }]
     }
 
-    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
-        items.get_mut(e0).unwrap()
+    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Option<Self::Out> {
+        items.get_mut(e0).ok()
     }
 }
 
@@ -351,11 +351,11 @@ where
 {
     type Out = <P0 as Trackable<'a, 1>>::Out;
 
-    fn check((p0,): &Self, entity: Entity, [e0]: [Entity; 1]) -> [Entity; 1] {
-        Trackable::check(p0, entity, [e0])
+    fn update((p0,): &Self, entity: Entity, [e0]: [Entity; 1]) -> [Entity; 1] {
+        Trackable::update(p0, entity, [e0])
     }
 
-    fn retrieve((p0,): &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
+    fn retrieve((p0,): &'a mut Self, [e0]: [Entity; 1]) -> Option<Self::Out> {
         Trackable::retrieve(p0, [e0])
     }
 }
@@ -368,14 +368,14 @@ macro_rules! impl_trackable {
         {
             type Out = ($(<$P as Trackable<'a, 1>>::Out,)*);
 
-            fn check(
+            fn update(
                 ($($p,)*): &Self,
                 entity: Entity,
                 [$($e,)*]: [Entity; count!($($P )*)]
             )
                 -> [Entity; count!($($p )*)]
             {
-                $(let [$v] = Trackable::check($p, entity, [$e]);)*
+                $(let [$v] = Trackable::update($p, entity, [$e]);)*
                 [$($v,)*]
             }
 
@@ -383,10 +383,10 @@ macro_rules! impl_trackable {
                 ($($p,)*): &'a mut Self,
                 [$($e,)*]: [Entity; count!($($P )*)]
             )
-                -> Self::Out
+                -> Option<Self::Out>
             {
-                $(let $v = Trackable::retrieve($p, [$e]);)*
-                ($($v,)*)
+                $(let Some($v) = Trackable::retrieve($p, [$e]) else { return None };)*
+                Some(($($v,)*))
             }
         }
     }

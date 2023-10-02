@@ -11,39 +11,45 @@ use std::{borrow::Borrow, marker::PhantomData};
 pub mod utils;
 use utils::*;
 
-pub trait Traverse {
-    fn traverse<Edge: EdgeSide>(&self, start: Entity) -> TraverseAnd<&'_ Self, Edge>;
-    fn traverse_mut<Edge: EdgeSide>(&mut self, start: Entity) -> TraverseAnd<&'_ mut Self, Edge>;
+pub trait Traverse<E, I>
+where
+    E: Borrow<Entity>,
+    I: IntoIterator<Item = E>,
+{
+    fn traverse<Edge: EdgeSide>(&self, starts: I) -> TraverseAnd<&'_ Self, Edge, I>;
+    fn traverse_mut<Edge: EdgeSide>(&mut self, starts: I) -> TraverseAnd<&'_ mut Self, Edge, I>;
 }
 
-impl<Q, RS, F> Traverse for Query<'_, '_, (Q, Relations<RS>), F>
+impl<E, I, Q, RS, F> Traverse<E, I> for Query<'_, '_, (Q, Relations<RS>), F>
 where
+    E: Borrow<Entity>,
+    I: IntoIterator<Item = E>,
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
     RS: RelationSet,
 {
-    fn traverse<Edge: EdgeSide>(&self, start: Entity) -> TraverseAnd<&'_ Self, Edge> {
+    fn traverse<Edge: EdgeSide>(&self, starts: I) -> TraverseAnd<&'_ Self, Edge, I> {
         let _ = RS::ZST_OR_PANIC;
         let _ = Edge::ZST_OR_PANIC;
 
         TraverseAnd {
             control: self,
             edge: PhantomData,
-            start,
+            starts,
             track: (),
             scan_init: (),
             scan_fold: (),
         }
     }
 
-    fn traverse_mut<Edge: EdgeSide>(&mut self, start: Entity) -> TraverseAnd<&'_ mut Self, Edge> {
+    fn traverse_mut<Edge: EdgeSide>(&mut self, starts: I) -> TraverseAnd<&'_ mut Self, Edge, I> {
         let _ = RS::ZST_OR_PANIC;
         let _ = Edge::ZST_OR_PANIC;
 
         TraverseAnd {
             control: self,
             edge: PhantomData,
-            start,
+            starts,
             track: (),
             scan_init: (),
             scan_fold: (),
@@ -56,15 +62,44 @@ pub trait TrackSelf {
     fn track_self(self) -> Self::Out;
 }
 
-impl<Control, Edge, Tracked> TrackSelf for TraverseAnd<Control, Edge, Tracked> {
-    type Out = TraverseAnd<Control, Edge, Tracked, true>;
+impl<Control, Edge, Starts, Tracked> TrackSelf for TraverseAnd<Control, Edge, Starts, Tracked> {
+    type Out = TraverseAnd<Control, Edge, Starts, Tracked, true>;
 
     fn track_self(self) -> Self::Out {
         TraverseAnd {
             control: self.control,
             edge: PhantomData,
-            start: self.start,
+            starts: self.starts,
             track: self.track,
+            scan_init: (),
+            scan_fold: (),
+        }
+    }
+}
+
+pub trait Track {
+    type Out<Item>;
+    fn track<Item>(self, item: Item) -> Self::Out<Item>
+    where
+        Item: for<'a> Trackable<'a, 1>;
+}
+
+impl<Control, Edge, Starts, Tracked, const ST: bool> Track
+    for TraverseAnd<Control, Edge, Starts, Tracked, ST>
+where
+    Tracked: Append,
+{
+    type Out<Item> = TraverseAnd<Control, Edge, Starts, <Tracked as Append>::Out<Item>, ST>;
+
+    fn track<Item>(self, item: Item) -> Self::Out<Item>
+    where
+        Item: for<'a> Trackable<'a, 1>,
+    {
+        TraverseAnd {
+            control: self.control,
+            edge: self.edge,
+            starts: self.starts,
+            track: Append::append(self.track, item),
             scan_init: (),
             scan_fold: (),
         }
@@ -82,8 +117,8 @@ pub trait FoldBreadth {
         Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>;
 }
 
-impl<'a, 'w, 's, Q, RS, F, Edge> FoldBreadth
-    for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true>
+impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth
+    for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
@@ -91,7 +126,7 @@ where
 {
     type FnIn<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
     type Out<Init, Fold> =
-        TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true, Init, Fold>;
+        TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true, Init, Fold>;
 
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
@@ -101,7 +136,7 @@ where
         TraverseAnd {
             control: self.control,
             edge: PhantomData,
-            start: self.start,
+            starts: self.starts,
             track: self.track,
             scan_init: init,
             scan_fold: fold,
@@ -109,16 +144,23 @@ where
     }
 }
 
-impl<'a, 'w, 's, Q, RS, F, Edge> FoldBreadth
-    for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true>
+impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth
+    for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
     RS: RelationSet,
 {
     type FnIn<'i> = <Q as WorldQuery>::Item<'i>;
-    type Out<Init, Fold> =
-        TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, (), true, Init, Fold>;
+    type Out<Init, Fold> = TraverseAnd<
+        &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
+        Edge,
+        Starts,
+        (),
+        true,
+        Init,
+        Fold,
+    >;
 
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
@@ -128,7 +170,7 @@ where
         TraverseAnd {
             control: self.control,
             edge: PhantomData,
-            start: self.start,
+            starts: self.starts,
             track: self.track,
             scan_init: init,
             scan_fold: fold,
@@ -199,6 +241,8 @@ mod compile_tests {
     #[derive(Component)]
     struct C;
 
+    impl Remote for C {}
+
     #[derive(Relation)]
     #[cleanup(policy = "Counted")]
     #[multi]
@@ -207,18 +251,16 @@ mod compile_tests {
     #[derive(Relation)]
     struct R1;
 
-    /*fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
-        left.ops()
-            .join::<R0>(&b)
-            .join::<R1>(&c)
-            .for_each(|a, (b, c)| {});
+    fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
+        for (a, edges) in left.iter() {
+            edges.join::<R0>(&b).join::<R1>(&c).for_each(|(b, c)| {});
+        }
     }
 
     fn join_left_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>, b: Query<&C>, c: Query<&C>) {
-        left.ops_mut()
-            .join::<R0>(&b)
-            .join::<R1>(&c)
-            .for_each(|a, (b, c)| {});
+        for (a, edges) in left.iter_mut() {
+            edges.join::<R0>(&b).join::<R1>(&c).for_each(|(b, c)| {});
+        }
     }
 
     fn join_right_mut(
@@ -226,10 +268,12 @@ mod compile_tests {
         mut b: Query<&mut B>,
         mut c: Query<&mut C>,
     ) {
-        left.ops()
-            .join::<R0>(&mut b)
-            .join::<R1>(&mut c)
-            .for_each(|a, (b, c)| {});
+        for (a, edges) in left.iter() {
+            edges
+                .join::<R0>(&mut b)
+                .join::<R1>(&mut c)
+                .for_each(|(b, c)| {});
+        }
     }
 
     fn join_full_mut(
@@ -237,41 +281,56 @@ mod compile_tests {
         mut b: Query<&mut B>,
         mut c: Query<&mut C>,
     ) {
-        left.ops_mut()
-            .join::<R0>(&mut b)
-            .join::<R1>(&mut c)
-            .for_each(|a, (b, c)| {});
+        for (a, edges) in left.iter_mut() {
+            edges
+                .join::<R0>(&mut b)
+                .join::<R1>(&mut c)
+                .for_each(|(b, c)| {});
+        }
     }
 
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
-        left.ops()
-            .traverse::<R0>(Entity::PLACEHOLDER)
+        left.traverse::<R0>(None::<Entity>)
             .track_self()
-            .for_each(|a0, a1| {});
-    }*/
-
-    fn traverse_join_imperative_ii(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.traverse::<R0>(Entity::PLACEHOLDER)
-            .for_each(|(a, rels)| {
-                rels.join::<R1>(&right).for_each(|right| {});
-            });
+            .for_each(|(p, pr), (c, cr)| {});
     }
 
-    fn traverse_join_imperative_im(
-        left: Query<(&A, Relations<(R0, R1)>)>,
-        mut right: Query<&mut B>,
-    ) {
-        left.traverse::<R0>(Entity::PLACEHOLDER)
-            .for_each(|(a, rels)| {
-                rels.join::<R1>(&mut right).for_each(|right| {});
-            });
+    fn traverse_join(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
+        left.traverse::<R0>(None::<Entity>).for_each(|(a, rels)| {
+            rels.join::<R1>(&right).for_each(|right| {});
+        });
+    }
+
+    fn traverse_mut_join(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
+        left.traverse::<R0>(None::<Entity>).for_each(|(a, rels)| {
+            rels.join::<R1>(&mut right).for_each(|right| {});
+        });
     }
 
     fn traverse_join_imperative_mi(mut left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.traverse_mut::<R0>(Entity::PLACEHOLDER)
+        left.traverse_mut::<R0>(None::<Entity>)
             .for_each(|(a, rels)| {
                 rels.join::<R1>(&right).for_each(|right| {});
             });
+    }
+
+    fn track(left: Query<(&A, Relations<R0>)>, right: Query<&C>) {
+        left.traverse::<R0>(None::<Entity>)
+            .track(&right)
+            .for_each(|c, (a, _)| {});
+    }
+
+    fn track_left_mut(mut left: Query<(&mut A, Relations<R0>)>, right: Query<&C>) {
+        left.traverse_mut::<R0>(None::<Entity>)
+            .track(&right)
+            .track_self()
+            .for_each(|c, (pa, _), (ca, _)| {});
+    }
+
+    fn track_right_mut(left: Query<(&A, Relations<R0>)>, mut right: Query<&mut C>) {
+        left.traverse::<R0>(None::<Entity>)
+            .track(&mut right)
+            .for_each(|c, (a, _)| {});
     }
 
     /*fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {

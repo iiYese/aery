@@ -98,9 +98,9 @@ pub mod tuple_traits;
 
 use events::{CleanupEvent, TargetEvent};
 
-/// Components that can be accessed by entities beyond immediate descendants in hierarchy
+/// Components that can be accessed by entities beyond immediate ancestors/descendants in hierarchy
 /// operations.
-pub trait Hereditary: Component {}
+pub trait Remote: Component {}
 
 /// A type to enable wildcard APIs
 pub enum Var<T> {
@@ -157,12 +157,12 @@ pub mod prelude {
         for_each::*,
         operations::{
             utils::{EdgeSide, Relations, Up},
-            FoldBreadth, Join, TrackSelf, Traverse,
+            FoldBreadth, Join, Track, TrackSelf, Traverse,
         },
         relation::{CleanupPolicy, Relation, ZstOrPanic},
         scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
-        Aery,
+        Aery, Remote,
     };
     pub use aery_macros::*;
 }
