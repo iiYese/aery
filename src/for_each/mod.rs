@@ -9,14 +9,6 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
-//mod for_each_2arity;
-//mod for_each_3arity;
-//mod for_each_4arity;
-
-//pub use for_each_2arity::*;
-//pub use for_each_3arity::ForEachPermutations3Arity;
-//pub use for_each_4arity::*;
-
 /// Join Control FLow
 pub enum JCF {
     Continue,
@@ -34,12 +26,12 @@ impl From<()> for JCF {
 // Joins
 // -----
 pub trait JoinForEach<const N: usize> {
-    type P0<'p0>;
+    type Joined<'j>;
 
     fn for_each<Func, Ret>(self, func: Func)
     where
         Ret: Into<JCF>,
-        Func: for<'p0> FnMut(Self::P0<'p0>) -> Ret;
+        Func: for<'j> FnMut(Self::Joined<'j>) -> Ret;
 }
 
 impl<RS, Edges, Joins, const N: usize> JoinForEach<N>
@@ -50,12 +42,12 @@ where
     Joins: for<'a> Joinable<'a, N>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
-    type P0<'p0> = <Joins as Joinable<'p0, N>>::Out;
+    type Joined<'j> = <Joins as Joinable<'j, N>>::Out;
 
     fn for_each<Func, Ret>(mut self, mut func: Func)
     where
         Ret: Into<JCF>,
-        Func: for<'p0> FnMut(Self::P0<'p0>) -> Ret,
+        Func: for<'j> FnMut(Self::Joined<'j>) -> Ret,
     {
         let mut edge_product = Edges::product(self.relations);
         let mut matches = [false; N];
@@ -83,7 +75,7 @@ where
 pub enum TCF {
     Continue,
     Probe,
-    Conclude,
+    Close,
     Exit,
 }
 
@@ -102,7 +94,7 @@ pub trait TraversalForEach<RS: RelationSet> {
     fn for_each<Func, Ret>(self, func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'i> FnMut((&'f mut Self::WQ<'i>, &'f RelationsItem<'i, RS>)) -> Ret;
+        Func: for<'a> FnMut(&mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret;
 }
 
 impl<Q, RS, F, Edge, E, Starts> TraversalForEach<RS>
@@ -121,7 +113,7 @@ where
     fn for_each<Func, Ret>(self, mut func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'i> FnMut((&'f mut Self::WQ<'i>, &'f RelationsItem<'i, RS>)) -> Ret,
+        Func: for<'a> FnMut(&mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret,
     {
         let mut queue = self
             .starts
@@ -134,13 +126,13 @@ where
                 continue;
             };
 
-            match func((&mut wq, &edges)).into() {
+            match func(&mut wq, &edges).into() {
                 TCF::Continue => {}
                 TCF::Exit => return,
                 TCF::Probe => {
                     queue.clear();
                 }
-                TCF::Conclude => {
+                TCF::Close => {
                     continue;
                 }
             }
@@ -166,7 +158,7 @@ where
     fn for_each<Func, Ret>(self, mut func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'i> FnMut((&'f mut Self::WQ<'i>, &'f RelationsItem<'i, RS>)) -> Ret,
+        Func: for<'a> FnMut(&mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret,
     {
         let mut queue = self
             .starts
@@ -179,13 +171,13 @@ where
                 continue;
             };
 
-            match func((&mut wq, &edges)).into() {
+            match func(&mut wq, &edges).into() {
                 TCF::Continue => {}
                 TCF::Exit => return,
                 TCF::Probe => {
                     queue.clear();
                 }
-                TCF::Conclude => {
+                TCF::Close => {
                     continue;
                 }
             }
@@ -206,10 +198,8 @@ pub trait RemoteTrackingTraversalForEach<RS: RelationSet, const N: usize> {
     fn for_each<Func, Ret>(self, func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            Self::Tracked<'l>,
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-        ) -> Ret;
+        Func:
+            for<'t, 'a> FnMut(Self::Tracked<'t>, &mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret;
 }
 
 impl<Q, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteTrackingTraversalForEach<RS, N>
@@ -230,10 +220,8 @@ where
     fn for_each<Func, Ret>(mut self, mut func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            Self::Tracked<'l>,
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-        ) -> Ret,
+        Func:
+            for<'t, 'a> FnMut(Self::Tracked<'t>, &mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret,
     {
         let mut queue = self
             .starts
@@ -248,10 +236,10 @@ where
             };
 
             if let Some(retrieved) = Trackable::retrieve(&mut self.track, last) {
-                match func(retrieved, (&mut wq, &edges)).into() {
+                match func(retrieved, &mut wq, &edges).into() {
                     TCF::Continue => {}
                     TCF::Exit => return,
-                    TCF::Conclude => {
+                    TCF::Close => {
                         continue;
                     }
                     TCF::Probe => {
@@ -285,10 +273,8 @@ where
     fn for_each<Func, Ret>(mut self, mut func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            Self::Tracked<'l>,
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-        ) -> Ret,
+        Func:
+            for<'t, 'a> FnMut(Self::Tracked<'t>, &mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret,
     {
         let mut queue = self
             .starts
@@ -303,10 +289,10 @@ where
             };
 
             if let Some(retrieved) = Trackable::retrieve(&mut self.track, last) {
-                match func(retrieved, (&mut wq, &edges)).into() {
+                match func(retrieved, &mut wq, &edges).into() {
                     TCF::Continue => {}
                     TCF::Exit => return,
-                    TCF::Conclude => {
+                    TCF::Close => {
                         continue;
                     }
                     TCF::Probe => {
@@ -332,9 +318,11 @@ pub trait SelfTrackingTraversalForEach<RS: RelationSet> {
     fn for_each<Func, Ret>(self, func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            (&'f mut Self::WQ<'l>, &'f RelationsItem<'l, RS>),
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
+        Func: for<'a> FnMut(
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
         ) -> Ret;
 }
 
@@ -354,9 +342,11 @@ where
     fn for_each<Func, Ret>(self, mut func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            (&'f mut Self::WQ<'l>, &'f RelationsItem<'l, RS>),
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
+        Func: for<'a> FnMut(
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
         ) -> Ret,
     {
         let mut queue = self
@@ -375,10 +365,10 @@ where
                     continue;
                 };
 
-                match func((&mut left_wq, &left_edges), (&mut right_wq, &right_edges)).into() {
+                match func(&mut left_wq, &left_edges, &mut right_wq, &right_edges).into() {
                     TCF::Continue => {}
                     TCF::Exit => return,
-                    TCF::Conclude => {
+                    TCF::Close => {
                         continue 'queue;
                     }
                     TCF::Probe => {
@@ -410,9 +400,11 @@ where
     fn for_each<Func, Ret>(self, mut func: Func)
     where
         Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            (&'f mut Self::WQ<'l>, &'f RelationsItem<'l, RS>),
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
+        Func: for<'a> FnMut(
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
         ) -> Ret,
     {
         let mut queue = self
@@ -435,10 +427,10 @@ where
                     continue;
                 };
 
-                match func((&mut left_wq, &left_edges), (&mut right_wq, &right_edges)).into() {
+                match func(&mut left_wq, &left_edges, &mut right_wq, &right_edges).into() {
                     TCF::Continue => {}
                     TCF::Exit => return,
-                    TCF::Conclude => {
+                    TCF::Close => {
                         continue 'queue;
                     }
                     TCF::Probe => {
@@ -450,169 +442,6 @@ where
             }
 
             queue.extend(Edge::entities(&left_edges));
-        }
-    }
-}
-
-// -----------------
-// - Traversal
-// - Remote tracking
-// - Self tracking
-// -----------------
-pub trait RemoteSelfTrackingTraversalForEach<RS: RelationSet, const N: usize> {
-    type WQ<'wq>;
-    type Tracked<'t>;
-
-    fn for_each<Func, Ret>(self, func: Func)
-    where
-        Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            Self::Tracked<'l>,
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-        ) -> Ret;
-}
-
-impl<Q, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteSelfTrackingTraversalForEach<RS, N>
-    for TraverseAnd<&'_ Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, Tracked, true>
-where
-    Q: WorldQuery,
-    RS: RelationSet,
-    F: ReadOnlyWorldQuery,
-    Edge: EdgeSide,
-    E: Borrow<Entity>,
-    Starts: IntoIterator<Item = E>,
-    for<'i> RelationsItem<'i, RS>: RelationEntries,
-    Tracked: for<'a> Trackable<'a, N>,
-{
-    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
-    type Tracked<'t> = <Tracked as Trackable<'t, N>>::Out;
-
-    fn for_each<Func, Ret>(mut self, mut func: Func)
-    where
-        Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            Self::Tracked<'l>,
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-        ) -> Ret,
-    {
-        let mut queue = self
-            .starts
-            .into_iter()
-            .map(|e| *e.borrow())
-            .map(|e| (e, [e; N]))
-            .collect::<VecDeque<_>>();
-
-        'queue: while let Some((entity, last)) = queue.pop_front() {
-            let Ok((mut left_wq, left_edges)) = self.control.get(entity) else {
-                continue;
-            };
-
-            for e in Edge::entities(&left_edges) {
-                let Ok((mut right_wq, right_edges)) = self.control.get(e) else {
-                    continue;
-                };
-
-                let updated = Trackable::update(&self.track, e, last);
-
-                if let Some(retrieved) = Trackable::retrieve(&mut self.track, updated) {
-                    match func(
-                        retrieved,
-                        (&mut left_wq, &left_edges),
-                        (&mut right_wq, &right_edges),
-                    )
-                    .into()
-                    {
-                        TCF::Continue => {}
-                        TCF::Exit => return,
-                        TCF::Conclude => {
-                            continue 'queue;
-                        }
-                        TCF::Probe => {
-                            queue.clear();
-                            queue.push_back((e, updated));
-                            continue 'queue;
-                        }
-                    }
-                }
-
-                queue.push_back((e, updated));
-            }
-        }
-    }
-}
-
-impl<Q, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteSelfTrackingTraversalForEach<RS, N>
-    for TraverseAnd<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, Tracked, true>
-where
-    Q: WorldQuery,
-    RS: RelationSet,
-    F: ReadOnlyWorldQuery,
-    Edge: EdgeSide,
-    E: Borrow<Entity>,
-    Starts: IntoIterator<Item = E>,
-    for<'i> RelationsItem<'i, RS>: RelationEntries,
-    Tracked: for<'a> Trackable<'a, N>,
-{
-    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
-    type Tracked<'t> = <Tracked as Trackable<'t, N>>::Out;
-
-    fn for_each<Func, Ret>(mut self, mut func: Func)
-    where
-        Ret: Into<TCF>,
-        Func: for<'f, 'l, 'r> FnMut(
-            Self::Tracked<'l>,
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-            (&'f mut Self::WQ<'r>, &'f RelationsItem<'r, RS>),
-        ) -> Ret,
-    {
-        let mut queue = self
-            .starts
-            .into_iter()
-            .map(|e| *e.borrow())
-            .map(|e| (e, [e; N]))
-            .collect::<VecDeque<_>>();
-
-        'queue: while let Some((entity, last)) = queue.pop_front() {
-            // SAFETY: Self referential relations are impossible so this is always safe
-            let Ok((mut left_wq, left_edges)) = (unsafe { self.control.get_unchecked(entity) })
-            else {
-                continue;
-            };
-
-            for e in Edge::entities(&left_edges) {
-                // SAFETY: Self referential relations are impossible so this is always safe
-                let Ok((mut right_wq, right_edges)) = (unsafe { self.control.get_unchecked(e) })
-                else {
-                    continue;
-                };
-
-                let updated = Trackable::update(&self.track, e, last);
-
-                if let Some(retrieved) = Trackable::retrieve(&mut self.track, updated) {
-                    match func(
-                        retrieved,
-                        (&mut left_wq, &left_edges),
-                        (&mut right_wq, &right_edges),
-                    )
-                    .into()
-                    {
-                        TCF::Continue => {}
-                        TCF::Exit => return,
-                        TCF::Conclude => {
-                            continue 'queue;
-                        }
-                        TCF::Probe => {
-                            queue.clear();
-                            queue.push_back((e, updated));
-                            continue 'queue;
-                        }
-                    }
-                }
-
-                queue.push_back((e, updated));
-            }
         }
     }
 }

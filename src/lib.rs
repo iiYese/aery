@@ -98,10 +98,6 @@ pub mod tuple_traits;
 
 use events::{CleanupEvent, TargetEvent};
 
-/// Components that can be accessed by entities beyond immediate ancestors/descendants in hierarchy
-/// operations.
-pub trait Remote: Component {}
-
 /// A type to enable wildcard APIs
 pub enum Var<T> {
     /// Sepcific value.
@@ -162,7 +158,6 @@ pub mod prelude {
         relation::{CleanupPolicy, Relation, ZstOrPanic},
         scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
-        Aery, Remote,
     };
     pub use aery_macros::*;
 }

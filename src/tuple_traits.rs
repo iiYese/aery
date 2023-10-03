@@ -2,7 +2,6 @@ use crate::{
     edges::{EdgeInfo, Edges, EdgesItem},
     operations::utils::{EdgeProduct, EdgeSide, Relations, RelationsItem},
     relation::{Relation, RelationId},
-    Remote,
 };
 use core::any::TypeId;
 
@@ -37,20 +36,9 @@ mod sealed {
     {
     }
 
-    /// World queries with [`Remote`] [`Component`]s.
-    pub trait RemoteWorldQuery: WorldQuery {}
-
-    impl<R: RelationSet> RemoteWorldQuery for Relations<R> {}
-    impl<C: Component + Remote> RemoteWorldQuery for &'_ C {}
-    impl<C: Component + Remote> RemoteWorldQuery for &'_ mut C {}
-
     macro_rules! impl_sealed {
         ($($P:ident),*) => {
             impl<$($P: Sealed),*> Sealed for ($($P,)*) {}
-            impl<$($P: RemoteWorldQuery),*> RemoteWorldQuery for ($($P,)*)
-            where
-                Self: WorldQuery
-            {}
         };
     }
 
@@ -307,7 +295,7 @@ pub trait Trackable<'a, const N: usize>: Sealed {
 
 impl<'a, Q, F> Trackable<'a, 1> for &'_ Query<'_, '_, Q, F>
 where
-    Q: WorldQuery + RemoteWorldQuery,
+    Q: WorldQuery,
     F: ReadOnlyWorldQuery,
 {
     type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
@@ -327,7 +315,7 @@ where
 
 impl<'a, Q, F> Trackable<'a, 1> for &'_ mut Query<'_, '_, Q, F>
 where
-    Q: WorldQuery + RemoteWorldQuery,
+    Q: WorldQuery,
     F: ReadOnlyWorldQuery,
 {
     type Out = <Q as WorldQuery>::Item<'a>;

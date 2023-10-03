@@ -40,7 +40,6 @@ pub struct TraverseAnd<
 #[derive(WorldQuery)]
 pub struct Relations<RS: RelationSet> {
     pub(crate) edges: RS::Edges,
-    pub(crate) entity: Entity,
     _phantom: PhantomData<RS>,
 }
 

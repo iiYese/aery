@@ -106,32 +106,31 @@ where
     }
 }
 
-// TODO tracking variants
-pub trait FoldBreadth {
-    type FnIn<'i>;
+pub trait FoldBreadth<RS: RelationSet> {
+    type WQ<'wq>;
     type Out<Init, Fold>;
 
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
-        Init: FnMut(&mut Self::FnIn<'_>) -> Acc,
-        Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>;
+        Init: FnMut(&mut Self::WQ<'_>, &RelationsItem<RS>) -> Acc,
+        Fold: FnMut(Acc, &mut Self::WQ<'_>, &RelationsItem<RS>) -> Result<Acc, E>;
 }
 
-impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth
+impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth<RS>
     for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
     RS: RelationSet,
 {
-    type FnIn<'i> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'i>;
+    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
     type Out<Init, Fold> =
         TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true, Init, Fold>;
 
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
-        Init: FnMut(&mut Self::FnIn<'_>) -> Acc,
-        Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>,
+        Init: FnMut(&mut Self::WQ<'_>, &RelationsItem<RS>) -> Acc,
+        Fold: FnMut(Acc, &mut Self::WQ<'_>, &RelationsItem<RS>) -> Result<Acc, E>,
     {
         TraverseAnd {
             control: self.control,
@@ -144,14 +143,14 @@ where
     }
 }
 
-impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth
+impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth<RS>
     for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
     RS: RelationSet,
 {
-    type FnIn<'i> = <Q as WorldQuery>::Item<'i>;
+    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
     type Out<Init, Fold> = TraverseAnd<
         &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
         Edge,
@@ -164,8 +163,8 @@ where
 
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
-        Init: FnMut(&mut Self::FnIn<'_>) -> Acc,
-        Fold: FnMut(Acc, Self::FnIn<'_>) -> Result<Acc, E>,
+        Init: FnMut(&mut Self::WQ<'_>, &RelationsItem<RS>) -> Acc,
+        Fold: FnMut(Acc, &mut Self::WQ<'_>, &RelationsItem<RS>) -> Result<Acc, E>,
     {
         TraverseAnd {
             control: self.control,
@@ -241,8 +240,6 @@ mod compile_tests {
     #[derive(Component)]
     struct C;
 
-    impl Remote for C {}
-
     #[derive(Relation)]
     #[cleanup(policy = "Counted")]
     #[multi]
@@ -292,45 +289,37 @@ mod compile_tests {
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.traverse::<R0>(None::<Entity>)
             .track_self()
-            .for_each(|(p, pr), (c, cr)| {});
+            .for_each(|p, pr, c, cr| {});
     }
 
     fn traverse_join(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.traverse::<R0>(None::<Entity>).for_each(|(a, rels)| {
+        left.traverse::<R0>(None::<Entity>).for_each(|a, rels| {
             rels.join::<R1>(&right).for_each(|right| {});
         });
     }
 
     fn traverse_mut_join(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
-        left.traverse::<R0>(None::<Entity>).for_each(|(a, rels)| {
+        left.traverse::<R0>(None::<Entity>).for_each(|a, rels| {
             rels.join::<R1>(&mut right).for_each(|right| {});
         });
     }
 
     fn traverse_join_imperative_mi(mut left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.traverse_mut::<R0>(None::<Entity>)
-            .for_each(|(a, rels)| {
-                rels.join::<R1>(&right).for_each(|right| {});
-            });
+        left.traverse_mut::<R0>(None::<Entity>).for_each(|a, rels| {
+            rels.join::<R1>(&right).for_each(|right| {});
+        });
     }
 
-    fn track(left: Query<(&A, Relations<R0>)>, right: Query<&C>) {
+    fn track(left: Query<(&A, Relations<R0>)>, right: Query<(&C, Relations<R1>)>) {
         left.traverse::<R0>(None::<Entity>)
             .track(&right)
-            .for_each(|c, (a, _)| {});
-    }
-
-    fn track_left_mut(mut left: Query<(&mut A, Relations<R0>)>, right: Query<&C>) {
-        left.traverse_mut::<R0>(None::<Entity>)
-            .track(&right)
-            .track_self()
-            .for_each(|c, (pa, _), (ca, _)| {});
+            .for_each(|c, a, _| {});
     }
 
     fn track_right_mut(left: Query<(&A, Relations<R0>)>, mut right: Query<&mut C>) {
         left.traverse::<R0>(None::<Entity>)
             .track(&mut right)
-            .for_each(|c, (a, _)| {});
+            .for_each(|c, a, _| {});
     }
 
     /*fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
