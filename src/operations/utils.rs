@@ -8,23 +8,15 @@ use bevy::ecs::{entity::Entity, query::WorldQuery};
 
 use std::marker::PhantomData;
 
-pub struct SelfTracking;
-
 pub struct JoinWith<Relations, JoinEdges, JoinItems> {
     pub(crate) relations: Relations,
     pub(crate) edges: PhantomData<JoinEdges>,
     pub(crate) items: JoinItems,
 }
 
-pub struct TraverseAnd<
-    Control,
-    Edge,
-    Starts,
-    Tracked = (),
-    const SELFTRACK: bool = false,
-    Init = (),
-    Fold = (),
-> {
+pub struct SelfTracking;
+
+pub struct TraverseAnd<Control, Edge, Starts, Tracked = (), Init = (), Fold = ()> {
     pub(crate) control: Control,
     pub(crate) edge: PhantomData<Edge>,
     pub(crate) starts: Starts,

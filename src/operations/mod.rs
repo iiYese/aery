@@ -62,15 +62,15 @@ pub trait TrackSelf {
     fn track_self(self) -> Self::Out;
 }
 
-impl<Control, Edge, Starts, Tracked> TrackSelf for TraverseAnd<Control, Edge, Starts, Tracked> {
-    type Out = TraverseAnd<Control, Edge, Starts, Tracked, true>;
+impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
+    type Out = TraverseAnd<Control, Edge, Starts, SelfTracking>;
 
     fn track_self(self) -> Self::Out {
         TraverseAnd {
             control: self.control,
             edge: PhantomData,
             starts: self.starts,
-            track: self.track,
+            track: SelfTracking,
             scan_init: (),
             scan_fold: (),
         }
@@ -84,12 +84,11 @@ pub trait Track {
         Item: for<'a> Trackable<'a, 1>;
 }
 
-impl<Control, Edge, Starts, Tracked, const ST: bool> Track
-    for TraverseAnd<Control, Edge, Starts, Tracked, ST>
+impl<Control, Edge, Starts, Tracked> Track for TraverseAnd<Control, Edge, Starts, Tracked>
 where
     Tracked: Append,
 {
-    type Out<Item> = TraverseAnd<Control, Edge, Starts, <Tracked as Append>::Out<Item>, ST>;
+    type Out<Item> = TraverseAnd<Control, Edge, Starts, <Tracked as Append>::Out<Item>>;
 
     fn track<Item>(self, item: Item) -> Self::Out<Item>
     where
@@ -117,15 +116,21 @@ pub trait FoldBreadth<RS: RelationSet> {
 }
 
 impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth<RS>
-    for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true>
+    for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
     RS: RelationSet,
 {
     type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
-    type Out<Init, Fold> =
-        TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true, Init, Fold>;
+    type Out<Init, Fold> = TraverseAnd<
+        &'a Query<'w, 's, (Q, Relations<RS>), F>,
+        Edge,
+        Starts,
+        SelfTracking,
+        Init,
+        Fold,
+    >;
 
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
@@ -144,7 +149,7 @@ where
 }
 
 impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth<RS>
-    for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, (), true>
+    for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
     Q: WorldQuery,
     F: ReadOnlyWorldQuery,
@@ -155,8 +160,7 @@ where
         &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
         Edge,
         Starts,
-        (),
-        true,
+        SelfTracking,
         Init,
         Fold,
     >;

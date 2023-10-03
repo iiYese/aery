@@ -1,4 +1,6 @@
-use crate::operations::utils::{EdgeSide, JoinWith, Relations, RelationsItem, TraverseAnd};
+use crate::operations::utils::{
+    EdgeSide, JoinWith, Relations, RelationsItem, SelfTracking, TraverseAnd,
+};
 use crate::tuple_traits::*;
 
 use bevy::ecs::{
@@ -327,7 +329,7 @@ pub trait SelfTrackingTraversalForEach<RS: RelationSet> {
 }
 
 impl<Q, RS, F, Edge, E, Starts> SelfTrackingTraversalForEach<RS>
-    for TraverseAnd<&'_ Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, (), true>
+    for TraverseAnd<&'_ Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
     Q: WorldQuery,
     RS: RelationSet,
@@ -385,7 +387,7 @@ where
 }
 
 impl<Q, RS, F, Edge, E, Starts> SelfTrackingTraversalForEach<RS>
-    for TraverseAnd<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, (), true>
+    for TraverseAnd<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
     Q: WorldQuery,
     RS: RelationSet,
