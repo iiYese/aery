@@ -11,10 +11,15 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
-/// Join Control FLow
+/// Control flow enum for [`Join`] operations.
+///
+/// [`Join`]: crate::operations::Join
 pub enum JCF {
+    /// Continue iterating permutations of matches.
     Continue,
+    /// Skip permutations until the nth join is advanced to the next match.
     FastForward(usize),
+    /// Terminate the loop.
     Exit,
 }
 
@@ -27,6 +32,7 @@ impl From<()> for JCF {
 // -----
 // Joins
 // -----
+#[allow(missing_docs)]
 pub trait JoinForEach<const N: usize> {
     type Joined<'j>;
 
@@ -73,11 +79,18 @@ where
     }
 }
 
-/// Traversal Control FLow
+/// Control flow enum for [`Traverse`] operations.
+///
+/// [`Traverse`]: crate::operations::Traverse
 pub enum TCF {
+    /// Continue iterating through the graph.
     Continue,
+    /// Immediately iterate the current node's breadth & stop iterating any other opened edges.
     Probe,
+    /// Close the current node for iteration ie. traversal will not go deeper into the graph
+    /// through this node.
     Close,
+    /// Terminate the loop.
     Exit,
 }
 
@@ -90,6 +103,7 @@ impl From<()> for TCF {
 // ----------
 // Traversals
 // ----------
+#[allow(missing_docs)]
 pub trait TraversalForEach<RS: RelationSet> {
     type WQ<'wq>;
 
@@ -193,6 +207,7 @@ where
 // - Traversal
 // - Remote tracking
 // -----------------
+#[allow(missing_docs)]
 pub trait RemoteTrackingTraversalForEach<RS: RelationSet, const N: usize> {
     type WQ<'wq>;
     type Tracked<'t>;
@@ -314,6 +329,7 @@ where
 // - Traversal
 // - Self tracking
 // ---------------
+#[allow(missing_docs)]
 pub trait SelfTrackingTraversalForEach<RS: RelationSet> {
     type WQ<'wq>;
 
@@ -448,6 +464,12 @@ where
     }
 }
 
+// ---------------
+// - Traversal
+// - Self tracking
+// - Fold breadth
+// ---------------
+#[allow(missing_docs)]
 pub trait FoldingSelfTrackingTraversalForEach<RS: RelationSet> {
     type WQ<'wq>;
     type Res;

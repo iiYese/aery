@@ -51,6 +51,7 @@ macro_rules! count {
     ($_:tt $($tail:tt)*) => { 1  + count!($($tail)*) };
 }
 
+#[doc(hidden)]
 pub trait Append {
     type Out<Item>;
     fn append<Item>(tup: Self, item: Item) -> Self::Out<Item>;
@@ -76,6 +77,7 @@ macro_rules! impl_append {
 
 all_tuples!(impl_append, 1, 15, P, p);
 
+#[doc(hidden)]
 pub trait RelationSet: Sized + Sealed {
     type Edges: ReadOnlyWorldQuery;
     type Types: 'static;
@@ -102,22 +104,25 @@ macro_rules! impl_relation_set {
 
 all_tuples!(impl_relation_set, 1, 15, P);
 
+/// Get information from multiple edge buckets.
 pub trait RelationEntries {
-    fn hosts(&self, id: RelationId) -> &[Entity];
-    fn targets(&self, id: RelationId) -> &[Entity];
+    /// Get all hosts of a relation type.
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity];
+    /// Get all targets of a relation type.
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity];
 }
 
 impl<R: Relation> RelationEntries for RelationsItem<'_, R> {
-    fn hosts(&self, id: RelationId) -> &[Entity] {
-        if TypeId::of::<R>() == id.0 {
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
             self.edges.hosts()
         } else {
             &[]
         }
     }
 
-    fn targets(&self, id: RelationId) -> &[Entity] {
-        if TypeId::of::<R>() == id.0 {
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
             self.edges.targets()
         } else {
             &[]
@@ -126,16 +131,16 @@ impl<R: Relation> RelationEntries for RelationsItem<'_, R> {
 }
 
 impl<R: Relation> RelationEntries for RelationsItem<'_, Option<R>> {
-    fn hosts(&self, id: RelationId) -> &[Entity] {
-        if TypeId::of::<R>() == id.0 {
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
             self.edges.hosts()
         } else {
             &[]
         }
     }
 
-    fn targets(&self, id: RelationId) -> &[Entity] {
-        if TypeId::of::<R>() == id.0 {
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
             self.edges.targets()
         } else {
             &[]
@@ -149,13 +154,15 @@ macro_rules! impl_relation_entries {
         where
             $(for<'a> <<$P::Edges as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>: EdgeInfo,)*
         {
-            fn hosts(&self, id: RelationId) -> &[Entity] {
+            fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+                let id = id.into();
                 let ($($e,)*) = &self.edges;
                 $(if TypeId::of::<$P::Types>() == id.0 { return $e.hosts() })*
                 &[]
             }
 
-            fn targets(&self, id: RelationId) -> &[Entity] {
+            fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+                let id = id.into();
                 let ($($e,)*) = &self.edges;
                 $(if TypeId::of::<$P::Types>() == id.0 { return $e.targets() })*
                 &[]
@@ -166,6 +173,7 @@ macro_rules! impl_relation_entries {
 
 all_tuples!(impl_relation_entries, 1, 15, P, e);
 
+#[doc(hidden)]
 pub trait Product<const N: usize> {
     fn product<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeProduct<'r, N>
     where
@@ -200,6 +208,7 @@ macro_rules! impl_product {
 
 all_tuples!(impl_product, 1, 15, P);
 
+#[doc(hidden)]
 pub trait Joinable<'a, const N: usize>: Sealed {
     type Out;
     fn check(items: &Self, entities: [Entity; N]) -> [bool; N];
@@ -286,6 +295,7 @@ macro_rules! impl_joinable {
 
 all_tuples!(impl_joinable, 2, 15, P, p, e, v);
 
+#[doc(hidden)]
 pub trait Trackable<'a, const N: usize>: Sealed {
     type Out;
     fn update(items: &Self, entity: Entity, fallback: [Entity; N]) -> [Entity; N];

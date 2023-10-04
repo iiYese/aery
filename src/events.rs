@@ -3,6 +3,8 @@ use crate::{relation::RelationId, Var};
 use bevy::ecs::{entity::Entity, event::Event};
 use std::cmp::PartialEq;
 
+/// Operation type of a relation target event.
+#[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Op {
     Set,
@@ -16,6 +18,7 @@ impl From<Op> for Var<Op> {
 }
 
 /// An event to notify when a target has changed for a relation.
+#[allow(missing_docs)]
 #[derive(Event, Clone, Copy, Debug)]
 pub struct TargetEvent {
     pub host: Entity,
@@ -103,5 +106,6 @@ impl TargetEvent {
 /// An event to notify when an entity was despawned as the resultof a cleanup policy.
 #[derive(Event)]
 pub struct CleanupEvent {
+    #[allow(missing_docs)]
     pub entity: Entity,
 }

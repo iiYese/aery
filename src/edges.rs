@@ -83,8 +83,10 @@ impl<R: Relation> Default for Targets<R> {
     }
 }
 
+#[allow(missing_docs)]
 pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
+#[allow(missing_docs)]
 #[derive(WorldQuery)]
 pub struct Edges<R: Relation> {
     pub(crate) hosts: Option<&'static Hosts<R>>,
@@ -92,11 +94,12 @@ pub struct Edges<R: Relation> {
     pub(crate) _filter: Or<(With<Hosts<R>>, With<Targets<R>>)>,
 }
 
+/// Get information from a single edge bucket.
 pub trait EdgeInfo {
+    /// Get all hosts.
     fn hosts(&self) -> &[Entity];
+    /// Get all targets.
     fn targets(&self) -> &[Entity];
-    fn has_host(&self, entity: Entity) -> bool;
-    fn has_target(&self, entity: Entity) -> bool;
 }
 
 impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
@@ -112,14 +115,6 @@ impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
             Some(targets) => &targets.vec.vec,
             None => &[],
         }
-    }
-
-    fn has_host(&self, e: Entity) -> bool {
-        self.hosts.map_or(false, |vec| vec.vec.vec.contains(&e))
-    }
-
-    fn has_target(&self, e: Entity) -> bool {
-        self.targets.map_or(false, |vec| vec.vec.vec.contains(&e))
     }
 }
 
@@ -138,14 +133,6 @@ impl<E: EdgeInfo> EdgeInfo for Option<E> {
             None => &[],
         }
     }
-
-    fn has_host(&self, e: Entity) -> bool {
-        self.as_ref().map_or(false, |edges| edges.has_host(e))
-    }
-
-    fn has_target(&self, e: Entity) -> bool {
-        self.as_ref().map_or(false, |edges| edges.has_target(e))
-    }
 }
 
 // TODO: bevy 0.12
@@ -157,21 +144,32 @@ pub(crate) struct OnDelete {
     pub hooks: SSUVec<fn(Entity, &mut World)>,
 }
 
-/// Filter to find roots of a relationship graph for quintessential traversal.
-/// A root of any `R` is an entity that is the target of atleast 1 `R`
-/// but does not itself target any other entities with `R`.
+/// Filter to find roots of a relationship graph. Eg for quintessential traversal.
+/// An entity is a root of `R` if:
+/// - It is targeted by atleast one other entity via `R`.
+/// - It does not target any other entity via `R`.
 #[derive(WorldQuery)]
 pub struct Root<R: Relation>((With<Hosts<R>>, Without<Targets<R>>));
 
+/// Filter to find branches of a relationship graph.
+/// A branch of `R` has **both** hosts and targets.
 #[derive(WorldQuery)]
 pub struct Branch<R: Relation>((With<Hosts<R>>, With<Targets<R>>));
 
+/// Filter to find leaves of a relationship graph.
+/// An entity is a leaf of `R` if:
+/// - It targets atleast 1 other entity via `R`.
+/// - It is not targeted by any other entity via `R`.
 #[derive(WorldQuery)]
 pub struct Leaf<R: Relation>((Without<Hosts<R>>, With<Targets<R>>));
 
+/// Filter to find participants of a relationship.
+/// A participant of `R` has **either** hosts or targets.
 #[derive(WorldQuery)]
 pub struct Participates<R: Relation>(Or<(With<Hosts<R>>, With<Targets<R>>)>);
 
+/// Filter to find entities that do not participante in a relationship.
+/// Ie. have no edges comming in or out.
 #[derive(WorldQuery)]
 pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
 
@@ -244,6 +242,7 @@ where
 }
 
 impl<R: Relation> Set<R> {
+    #[allow(missing_docs)]
     pub fn new(host: Entity, target: Entity) -> Self {
         Self {
             host,
@@ -376,7 +375,7 @@ where
     }
 }
 
-/// Command to remove relationships between entities
+/// Command to remove relationships between entities.
 /// This operation is not noisy so if either participant does not exist or
 /// the relation does not exist nothing happens.
 pub struct Unset<R>
@@ -389,6 +388,7 @@ where
 }
 
 impl<R: Relation> Unset<R> {
+    #[allow(missing_docs)]
     pub fn new(host: Entity, target: Entity) -> Self {
         Self {
             host,
@@ -569,8 +569,18 @@ pub struct UnsetAll<R>
 where
     R: Relation,
 {
-    pub entity: Entity,
-    pub _phantom: PhantomData<R>,
+    entity: Entity,
+    _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> UnsetAll<R> {
+    #[allow(missing_docs)]
+    pub fn new(entity: Entity) -> Self {
+        Self {
+            entity,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R: Relation> Command for UnsetAll<R> {
@@ -600,8 +610,18 @@ pub struct Withdraw<R>
 where
     R: Relation,
 {
-    pub entity: Entity,
-    pub _phantom: PhantomData<R>,
+    entity: Entity,
+    _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> Withdraw<R> {
+    #[allow(missing_docs)]
+    pub fn new(entity: Entity) -> Self {
+        Self {
+            entity,
+            _phantom: PhantomData,
+        }
+    }
 }
 
 impl<R: Relation> Command for Withdraw<R> {
@@ -627,22 +647,16 @@ impl<R: Relation> Command for Withdraw<R> {
 }
 
 /// An extension API for `EntityMut<'_>` to sugar using relation commands.
-/// Since changing relations can trigger cleanup procedures that might despawn the `Entity` referred
-/// to by `EntytMut<'_>` each method is consuming and returns an `Option<EntityMut<'_>>`.
-///
-/// For convenience this trait is also implemented for `Option<EntityMut<'_>>`. Where the methods
-/// are essentially their non-option equivalent wrapped in an implicit [`Option::and_then`] call.
-/// `Option::<EntityMut<'_>>::set` will emit a warning if called on an option that is `None`.
-/// All of the other functions will not emit a warning as unsetting relations that don't exist and
-/// despawning entities that don't exist are not considered an error.
-///
-/// See [`Scope`] for extension APIs that can operate on relation participants including spawning
-/// them.
 pub trait RelationCommands {
+    /// [`Set`] a relationship target.
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self;
+    /// [`Unset`] a relationship target.
     fn unset<R: Relation>(&mut self, target: Entity) -> &mut Self;
+    /// [`UnsetAll`] relationship targets.
     fn unset_all<R: Relation>(&mut self) -> &mut Self;
+    /// [`Withdraw`] from a relationship.
     fn withdraw<R: Relation>(&mut self) -> &mut Self;
+    /// [`CheckedDespawn`] an entity.
     fn checked_despawn(self);
 }
 

@@ -8,14 +8,17 @@ use bevy::ecs::{entity::Entity, query::WorldQuery};
 
 use std::marker::PhantomData;
 
+#[allow(missing_docs)]
 pub struct JoinWith<Relations, JoinEdges, JoinItems> {
     pub(crate) relations: Relations,
     pub(crate) edges: PhantomData<JoinEdges>,
     pub(crate) items: JoinItems,
 }
 
+#[allow(missing_docs)]
 pub struct SelfTracking;
 
+#[allow(missing_docs)]
 pub struct TraverseAnd<Control, Edge, Starts, Tracked = (), Init = (), Fold = ()> {
     pub(crate) control: Control,
     pub(crate) edge: PhantomData<Edge>,
@@ -35,7 +38,7 @@ pub struct Relations<RS: RelationSet> {
     _phantom: PhantomData<RS>,
 }
 
-/// Struct to track inner product iteration.
+#[allow(missing_docs)]
 pub struct EdgeProduct<'a, const N: usize> {
     pub(crate) base_iterators: [EdgeIter<'a>; N],
     pub(crate) live_iterators: [EdgeIter<'a>; N],
@@ -76,8 +79,13 @@ impl<'a, const N: usize> EdgeProduct<'a, N> {
     }
 }
 
+/// Flip the direction of a [`Join`] or [`Traverse`] operation to use targets instead of hosts.
+///
+/// [`Join`]: crate::operations::Join
+/// [`Traverse`]: crate::operations::Traverse
 pub struct Up<R>(PhantomData<R>);
 
+#[allow(missing_docs)]
 pub trait EdgeSide {
     fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
     where

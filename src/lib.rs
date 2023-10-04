@@ -1,6 +1,7 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::let_unit_value)]
+#![warn(missing_docs)]
 
 //! # Aery
 //! A plugin that adds a subset of Entity Relationship features to Bevy using Non-fragmenting
@@ -88,12 +89,19 @@ use bevy::{
     ecs::entity::Entity,
 };
 
+///
 pub mod edges;
+///
 pub mod events;
+///
 pub mod for_each;
+///
 pub mod operations;
+///
 pub mod relation;
+///
 pub mod scope;
+///
 pub mod tuple_traits;
 
 use events::{CleanupEvent, TargetEvent};
@@ -137,6 +145,7 @@ impl From<Entity> for Var<Entity> {
     }
 }
 
+/// Plugin that adds the resources and events created by aery.
 pub struct Aery;
 
 impl Plugin for Aery {
@@ -145,13 +154,16 @@ impl Plugin for Aery {
     }
 }
 
+///
 pub mod prelude {
+    #[doc(no_inline)]
     pub use super::{
         Aery,
         Var::{self, Wc},
     };
+    #[doc(no_inline)]
     pub use crate::{
-        edges::{RelationCommands, Set, Unset},
+        edges::{Abstains, Branch, Leaf, Participates, RelationCommands, Root, Set, Unset},
         events::{CleanupEvent, Op, TargetEvent},
         for_each::*,
         operations::{
@@ -162,5 +174,6 @@ pub mod prelude {
         scope::{EntityMutExt, Scope},
         tuple_traits::{Joinable, RelationSet},
     };
+    #[doc(no_inline)]
     pub use aery_macros::*;
 }

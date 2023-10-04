@@ -8,15 +8,47 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, marker::PhantomData};
 
+///
 pub mod utils;
 use utils::*;
 
+/// Traverse a query in breadth first order.
+/// Query must be in the form `Query<(Q, Relations<RS>)>` to use this API.
+///
+/// # Examples
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A;
+///
+/// #[derive(Component)]
+/// struct B;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn descent(left: Query<((&A, &B), Relations<R>)>, starts: Query<Entity, Root<R>>) {
+///     left.traverse::<R>(starts.iter()).for_each(|(a, b), _| {
+///         // ..
+///     })
+/// }
+///
+/// fn ascent(left: Query<((&A, &B), Relations<R>)>, starts: Query<Entity, Root<R>>) {
+///     left.traverse::<Up<R>>(starts.iter()).for_each(|(a, b), _| {
+///         // ..
+///     })
+/// }
+/// ```
 pub trait Traverse<E, I>
 where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
 {
+    /// Traverse along an edge.
     fn traverse<Edge: EdgeSide>(&self, starts: I) -> TraverseAnd<&'_ Self, Edge, I>;
+    /// Traverse along an edge with mut access.
     fn traverse_mut<Edge: EdgeSide>(&mut self, starts: I) -> TraverseAnd<&'_ mut Self, Edge, I>;
 }
 
@@ -57,8 +89,39 @@ where
     }
 }
 
+/// Let a traversing query track itself. This allows you to see immediate ancestors for desents &
+/// immediate descendants for ascents. See [`Track`] for an explaination on tracking.
+///
+/// # Example
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A;
+///
+/// #[derive(Component)]
+/// struct B;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn descent_with_parent(
+///     left: Query<((&A, &B), Relations<R>)>,
+///     starts: Query<Entity, Root<R>>
+/// ) {
+///     left.traverse::<R>(starts.iter())
+///         .track_self()
+///         .for_each(|(p_a, p_b), _, (c_a, c_b), _| {
+///             // ..
+///         })
+/// }
+/// ```
 pub trait TrackSelf {
+    #[allow(missing_docs)]
     type Out;
+
+    #[allow(missing_docs)]
     fn track_self(self) -> Self::Out;
 }
 
@@ -77,8 +140,46 @@ impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
     }
 }
 
+/// Track the last seen set of components when traversing an edge. This is useful in scenarios
+/// where you mightn't have a component on every entity in a hierarchy. For instance it might not
+/// make sense for a component to be on every entity or even an immediate ancestor meaning spam
+/// propogation isn't viable. Scroll areas in UI are one example of this.
+///
+/// # Example
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct Text(String);
+///
+/// #[derive(Component)]
+/// struct ScrollArea {
+///     // ..
+/// }
+///
+/// #[derive(Relation)]
+/// struct Ui;
+///
+/// fn draw(
+///     mut scroll_areas: Query<&mut ScrollArea>,
+///     tree: Query<(Option<&Text>, Relations<Ui>)>,
+///     roots: Query<Entity, Root<Ui>>
+/// ) {
+///     tree.traverse::<Ui>(roots.iter())
+///         .track(&mut scroll_areas)
+///         .for_each(|scroll_area, text, _| {
+///             if let Some(text) = text {
+///                 // draw text to scroll area
+///             }
+///         });
+/// }
+/// ```
 pub trait Track {
+    #[allow(missing_docs)]
     type Out<Item>;
+
+    #[allow(missing_docs)]
     fn track<Item>(self, item: Item) -> Self::Out<Item>
     where
         Item: for<'a> Trackable<'a, 1>;
@@ -105,10 +206,69 @@ where
     }
 }
 
+/// Passes each breadth twice doing a fold operation the first time for traversals that
+/// [`TrackSelf`].
+/// - The init closure recieves the ancestor entity & returns an initial value.
+/// - The fold closure recieves each descendant & the accumulated value so far.
+/// - Returning an [`Ok`] from the fold closure advances it to the next child.
+/// - Returning an [`Err`] from the fold closure ends the fold & starts the second pass in the
+/// `.for_each` immediately.
+///
+/// The result of the fold operation will be available in the `.for_each` call as the first
+/// parameter.
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct ChildDir {
+///     // ..
+/// }
+///
+/// #[derive(Component)]
+/// struct Size {
+///     // ..
+/// }
+///
+/// #[derive(Component)]
+/// struct Spacing {
+///     // ..
+/// }
+///
+/// #[derive(Relation)]
+/// struct Ui;
+///
+/// fn tiling_layout_algo(
+///     roots: Query<Entity, Root<Ui>>,
+///     mut tree: Query<((&mut Size, &ChildDir, &Spacing), Relations<Ui>)>
+/// ) {
+///     tree.traverse_mut::<Ui>(roots.iter())
+///         .track_self()
+///         .fold_breadth(
+///             |(size, dir, _), _| {
+///                 /* get available space based on child dir */
+///                 # 0
+///             },
+///             |available, (size, _, spacing), _| {
+///                 /* calculate actual space for each child */
+///                 # Ok::<_, ()>(0)
+///             }
+///         )
+///         .for_each(|res, parent, _, child, _| {
+///             let Ok(res) = res else { return };
+///             // subdivide parent space between children
+///         });
+/// }
+///
+/// ```
 pub trait FoldBreadth<RS: RelationSet> {
+    #[allow(missing_docs)]
     type WQ<'wq>;
+
+    #[allow(missing_docs)]
     type Out<Init, Fold>;
 
+    #[allow(missing_docs)]
     fn fold_breadth<Acc, E, Init, Fold>(self, init: Init, fold: Fold) -> Self::Out<Init, Fold>
     where
         Init: FnMut(&mut Self::WQ<'_>, &RelationsItem<RS>) -> Acc,
@@ -181,11 +341,42 @@ where
     }
 }
 
+/// Join multiple queries together via edges.
+/// # Example
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// // Instancing geometry from vector graphics
+/// #[derive(Component)]
+/// struct DynamicMesh {
+///     // ..
+/// }
+///
+/// #[derive(Relation)]
+/// #[aery(Total)]
+/// struct Instance;
+///
+/// fn render_instances(
+///     meshes: Query<(&DynamicMesh, Relations<Instance>)>,
+///     instances: Query<&Transform>,
+/// ) {
+///     for (mesh, edges) in meshes.iter() {
+///         edges.join::<Instance>(&instances).for_each(|instance| {
+///             // Render mesh
+///         })
+///     }
+/// }
+///
+/// ```
 pub trait Join<Item>
 where
     Item: for<'a> Joinable<'a, 1>,
 {
+    #[allow(missing_docs)]
     type Out<Edge: EdgeSide>;
+
+    #[allow(missing_docs)]
     fn join<Edge: EdgeSide>(self, item: Item) -> Self::Out<Edge>;
 }
 

@@ -2,10 +2,13 @@ use crate::Var;
 use core::any::TypeId;
 
 // TODO 0.12 impl for Hierarchy
+
+/// Type ID of a relation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RelationId(pub(crate) TypeId);
 
 impl RelationId {
+    #[allow(missing_docs)]
     pub fn of<R: Relation>() -> Self {
         Self(TypeId::of::<R>())
     }
@@ -20,6 +23,7 @@ impl<R: Relation> From<R> for Var<RelationId> {
 
 /// Hack to ensure relation types are indeed ZSTs
 pub trait ZstOrPanic: Sized {
+    #[allow(missing_docs)]
     const ZST_OR_PANIC: () = {
         // TODO: Make diagnostic friendlier when `std::any::type_name` becomes const
         // TODO: Use actual type level mechanism and remove hack when possible in stable
@@ -41,29 +45,39 @@ impl<T> ZstOrPanic for T {}
 /// use aery::prelude::*;
 ///
 /// #[derive(Relation)]
-/// #[cleanup(policy = "Orphan")]
 /// struct O;
 ///
 /// #[derive(Relation)]
-/// #[cleanup(policy = "Recursive")]
+/// #[aery(Recursive)]
 /// struct R;
 ///
-/// fn sys(wrld: &mut World) {
-///     // Creation
-///     let root = wrld
-///         .spawn_empty()
-///         .scope::<O>(|parent, ent1| {
-///             ent1.set::<R>(parent)
-///                 .scope::<O>(|parent, ent3| {})
-///                 .scope::<O>(|parent, ent4| { ent4.set::<R>(parent); });
-///         })
-///         .scope::<O>(|_, ent2| {
-///             ent2.scope::<R>(|_, ent5| {})
-///                 .scope::<R>(|_, ent6| {});
-///         });
+/// fn sys(world: &mut World) {
+///     let [e0, e1, e2, e3, e4, e5, e6] = std::array::from_fn(|_| world.spawn_empty().id());
+///
+///     world.entity_mut(e1).set::<O>(e0).set::<R>(e0);
+///
+///     world.entity_mut(e2).set::<O>(e0);
+///     world.entity_mut(e3).set::<O>(e1);
+///
+///     world.entity_mut(e4).set::<O>(e1).set::<R>(e1);
+///
+///     world.entity_mut(e5).set::<R>(e2);
+///     world.entity_mut(e6).set::<R>(e2);
 ///
 ///     // Trigger cleanup
-///     root.checked_despawn();
+///     world.entity_mut(e0).checked_despawn();
+///
+///     for (entity, expected) in [
+///         (e0, false),
+///         (e1, false),
+///         (e2, true),
+///         (e3, true),
+///         (e4, false),
+///         (e5, true),
+///         (e6, true)
+///     ] {
+///         assert_eq!(world.get_entity(entity).is_some(), expected)
+///     }
 /// }
 /// ```
 /// ## After creation before cleanup:
@@ -116,14 +130,18 @@ pub enum CleanupPolicy {
 /// host and target are "participants". Exclusive relations that face bottom up in hierarchies have
 /// many favorable properties so these are the default.
 ///
-/// Note that relations **must** be a [ZST](https://doc.rust-lang.org/nomicon/exotic-sizes.html#zero-sized-types-zsts).
+/// Note that relations:
+/// - Must be a [ZST](https://doc.rust-lang.org/nomicon/exotic-sizes.html#zero-sized-types-zsts).
+/// This simply means that there can be no data on the edge.
 /// A compile error will be produced if you try to use a relation that isn't one.
+/// - Cannot be self referential. Ie. an entity cannot target itself with a relationship it hosts.
+/// If this is ever attempted a warning will be logged & the relationship will not be set.
 ///
 /// Aery only supports relations that are non-fragmenting. Ie. an entities archetype is not affected
 /// by the targets of its relations. See [this article](https://ajmmertens.medium.com/building-an-ecs-2-archetypes-and-vectorization-fe21690805f9)
-/// for more information. This isn't necessarily good or bad. There are various tradeoffs but it
-/// would be overwhelming to explain them all at once. To keep it quick the archetype fragmentation
-/// is comparable to `bevy_hierarchy` if it supported multiple hierarchy types.
+/// for more information. This isn't necessarily good or bad. Archetype fragmentation is a more
+/// advanced topic but to keep it short and simple the archetype fragmentation is comparable to
+/// `bevy_hierarchy` if it supported multiple hierarchy types.
 pub trait Relation: 'static + Sized + Send + Sync {
     /// How to clean up entities and relations when an entity with a relation is despawned
     /// or when a relation is unset.
