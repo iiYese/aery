@@ -245,8 +245,7 @@ mod compile_tests {
     struct C;
 
     #[derive(Relation)]
-    #[cleanup(policy = "Counted")]
-    #[multi]
+    #[aery(Counted, Poly)]
     struct R0;
 
     #[derive(Relation)]

@@ -801,19 +801,18 @@ mod tests {
     }
 
     #[derive(Relation)]
-    #[cleanup(policy = "Orphan")]
     struct Orphan;
 
     #[derive(Relation)]
-    #[cleanup(policy = "Counted")]
+    #[aery(Counted)]
     struct Counted;
 
     #[derive(Relation)]
-    #[cleanup(policy = "Recursive")]
+    #[aery(Recursive)]
     struct Recursive;
 
     #[derive(Relation)]
-    #[cleanup(policy = "Total")]
+    #[aery(Total)]
     struct Total;
 
     #[derive(Debug)]
@@ -941,7 +940,6 @@ mod tests {
     #[test]
     fn orphan_in_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Orphan")]
         struct R;
 
         let mut world = World::new();
@@ -959,7 +957,6 @@ mod tests {
     #[test]
     fn orphan_out_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Orphan")]
         struct R;
 
         let mut world = World::new();
@@ -977,7 +974,7 @@ mod tests {
     #[test]
     fn counted_in_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Counted")]
+        #[aery(Counted)]
         struct R;
 
         let mut world = World::new();
@@ -994,7 +991,7 @@ mod tests {
     #[test]
     fn counted_out_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Counted")]
+        #[aery(Counted)]
         struct R;
 
         let mut world = World::new();
@@ -1012,7 +1009,7 @@ mod tests {
     #[test]
     fn recursive_in_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Recursive")]
+        #[aery(Recursive)]
         struct R;
 
         let mut world = World::new();
@@ -1030,7 +1027,7 @@ mod tests {
     #[test]
     fn recursive_out_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Recursive")]
+        #[aery(Recursive)]
         struct R;
 
         let mut world = World::new();
@@ -1047,7 +1044,7 @@ mod tests {
     #[test]
     fn total_in_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Total")]
+        #[aery(Total)]
         struct R;
 
         let mut world = World::new();
@@ -1064,7 +1061,7 @@ mod tests {
     #[test]
     fn total_out_despawned() {
         #[derive(Relation)]
-        #[cleanup(policy = "Total")]
+        #[aery(Total)]
         struct R;
 
         let mut world = World::new();
@@ -1081,7 +1078,6 @@ mod tests {
     #[test]
     fn orphan_in_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Orphan")]
         struct R;
 
         let mut world = World::new();
@@ -1100,7 +1096,6 @@ mod tests {
     #[test]
     fn orphan_out_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Orphan")]
         struct R;
 
         let mut world = World::new();
@@ -1118,7 +1113,7 @@ mod tests {
     #[test]
     fn counted_in_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Counted")]
+        #[aery(Counted)]
         struct R;
 
         let mut world = World::new();
@@ -1136,7 +1131,7 @@ mod tests {
     #[test]
     fn counted_out_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Counted")]
+        #[aery(Counted)]
         struct R;
 
         let mut world = World::new();
@@ -1154,7 +1149,7 @@ mod tests {
     #[test]
     fn recursive_in_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Recursive")]
+        #[aery(Recursive)]
         struct R;
 
         let mut world = World::new();
@@ -1174,7 +1169,7 @@ mod tests {
     #[should_panic]
     fn recursive_out_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Recursive")]
+        #[aery(Recursive)]
         struct R;
 
         let mut world = World::new();
@@ -1191,7 +1186,7 @@ mod tests {
     #[test]
     fn total_in_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Total")]
+        #[aery(Total)]
         struct R;
 
         let mut world = World::new();
@@ -1210,7 +1205,7 @@ mod tests {
     #[should_panic]
     fn total_out_unset() {
         #[derive(Relation)]
-        #[cleanup(policy = "Total")]
+        #[aery(Total)]
         struct R;
 
         let mut world = World::new();

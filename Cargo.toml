@@ -14,7 +14,7 @@ readme = "README.md"
 [dependencies]
 bevy = "0.11"
 smallvec = "1.11.0"
-aery_macros = { path = "macros", version = "0.2.0-dev" }
+aery_macros = { path = "macros", version = "0.3.0-dev" }
 aquamarine = "0.3.2"
 
 [features]
