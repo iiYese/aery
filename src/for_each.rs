@@ -447,3 +447,217 @@ where
         }
     }
 }
+
+pub trait FoldingSelfTrackingTraversalForEach<RS: RelationSet> {
+    type WQ<'wq>;
+    type Res;
+
+    fn for_each<Func, Ret>(self, func: Func)
+    where
+        Ret: Into<TCF>,
+        Func: for<'a> FnMut(
+            &mut Self::Res,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+        ) -> Ret;
+}
+
+impl<Q, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTraversalForEach<RS>
+    for TraverseAnd<
+        &'_ Query<'_, '_, (Q, Relations<RS>), F>,
+        Edge,
+        Starts,
+        SelfTracking,
+        Init,
+        Fold,
+    >
+where
+    Q: WorldQuery,
+    RS: RelationSet,
+    F: ReadOnlyWorldQuery,
+    Edge: EdgeSide,
+    E: Borrow<Entity>,
+    Starts: IntoIterator<Item = E>,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
+    Init: for<'a> FnMut(
+        &mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>,
+        &RelationsItem<'a, RS>,
+    ) -> Acc,
+    Fold: for<'a> FnMut(
+        Acc,
+        &mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>,
+        &RelationsItem<'a, RS>,
+    ) -> Result<Acc, Err>,
+{
+    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
+    type Res = Result<Acc, Err>;
+
+    fn for_each<Func, Ret>(mut self, mut func: Func)
+    where
+        Ret: Into<TCF>,
+        Func: for<'a> FnMut(
+            &mut Self::Res,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+        ) -> Ret,
+    {
+        let mut queue = self
+            .starts
+            .into_iter()
+            .map(|e| *e.borrow())
+            .collect::<VecDeque<Entity>>();
+
+        'queue: while let Some(entity) = queue.pop_front() {
+            let Ok((mut left_wq, left_edges)) = self.control.get(entity) else {
+                continue;
+            };
+
+            let mut acc = Ok::<_, Err>((self.init)(&mut left_wq, &left_edges));
+
+            for e in Edge::entities(&left_edges) {
+                let Ok((mut item, edges)) = self.control.get(e) else {
+                    continue;
+                };
+
+                let Ok(acc_ok) = acc else {
+                    break;
+                };
+
+                acc = (self.fold)(acc_ok, &mut item, &edges);
+            }
+
+            for e in Edge::entities(&left_edges) {
+                let Ok((mut right_wq, right_edges)) = self.control.get(e) else {
+                    continue;
+                };
+
+                match func(
+                    &mut acc,
+                    &mut left_wq,
+                    &left_edges,
+                    &mut right_wq,
+                    &right_edges,
+                )
+                .into()
+                {
+                    TCF::Continue => {}
+                    TCF::Exit => return,
+                    TCF::Close => {
+                        continue 'queue;
+                    }
+                    TCF::Probe => {
+                        queue.clear();
+                        queue.push_back(e);
+                        continue 'queue;
+                    }
+                }
+            }
+
+            queue.extend(Edge::entities(&left_edges));
+        }
+    }
+}
+
+impl<Q, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTraversalForEach<RS>
+    for TraverseAnd<
+        &'_ mut Query<'_, '_, (Q, Relations<RS>), F>,
+        Edge,
+        Starts,
+        SelfTracking,
+        Init,
+        Fold,
+    >
+where
+    Q: WorldQuery,
+    RS: RelationSet,
+    F: ReadOnlyWorldQuery,
+    Edge: EdgeSide,
+    E: Borrow<Entity>,
+    Starts: IntoIterator<Item = E>,
+    for<'i> RelationsItem<'i, RS>: RelationEntries,
+    Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>, &RelationsItem<'a, RS>) -> Acc,
+    Fold: for<'a> FnMut(
+        Acc,
+        &mut <Q as WorldQuery>::Item<'a>,
+        &RelationsItem<'a, RS>,
+    ) -> Result<Acc, Err>,
+{
+    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
+    type Res = Result<Acc, Err>;
+
+    fn for_each<Func, Ret>(mut self, mut func: Func)
+    where
+        Ret: Into<TCF>,
+        Func: for<'a> FnMut(
+            &mut Self::Res,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+            &mut Self::WQ<'a>,
+            &RelationsItem<'a, RS>,
+        ) -> Ret,
+    {
+        let mut queue = self
+            .starts
+            .into_iter()
+            .map(|e| *e.borrow())
+            .collect::<VecDeque<Entity>>();
+
+        'queue: while let Some(entity) = queue.pop_front() {
+            // SAFETY: Self referential relations are impossible so this is always safe.
+            let Ok((mut left_wq, left_edges)) = (unsafe { self.control.get_unchecked(entity) })
+            else {
+                continue;
+            };
+
+            let mut acc = Ok::<_, Err>((self.init)(&mut left_wq, &left_edges));
+
+            for e in Edge::entities(&left_edges) {
+                // SAFETY: Self referential relations are impossible so this is always safe.
+                let Ok((mut item, edges)) = (unsafe { self.control.get_unchecked(e) }) else {
+                    continue;
+                };
+
+                let Ok(acc_ok) = acc else {
+                    break;
+                };
+
+                acc = (self.fold)(acc_ok, &mut item, &edges);
+            }
+
+            for e in Edge::entities(&left_edges) {
+                // SAFETY: Self referential relations are impossible so this is always safe.
+                let Ok((mut right_wq, right_edges)) = (unsafe { self.control.get_unchecked(e) })
+                else {
+                    continue;
+                };
+
+                match func(
+                    &mut acc,
+                    &mut left_wq,
+                    &left_edges,
+                    &mut right_wq,
+                    &right_edges,
+                )
+                .into()
+                {
+                    TCF::Continue => {}
+                    TCF::Exit => return,
+                    TCF::Close => {
+                        continue 'queue;
+                    }
+                    TCF::Probe => {
+                        queue.clear();
+                        queue.push_back(e);
+                        continue 'queue;
+                    }
+                }
+            }
+
+            queue.extend(Edge::entities(&left_edges));
+        }
+    }
+}

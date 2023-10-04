@@ -37,8 +37,8 @@ where
             edge: PhantomData,
             starts,
             track: (),
-            scan_init: (),
-            scan_fold: (),
+            init: (),
+            fold: (),
         }
     }
 
@@ -51,8 +51,8 @@ where
             edge: PhantomData,
             starts,
             track: (),
-            scan_init: (),
-            scan_fold: (),
+            init: (),
+            fold: (),
         }
     }
 }
@@ -71,8 +71,8 @@ impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
             edge: PhantomData,
             starts: self.starts,
             track: SelfTracking,
-            scan_init: (),
-            scan_fold: (),
+            init: (),
+            fold: (),
         }
     }
 }
@@ -99,8 +99,8 @@ where
             edge: self.edge,
             starts: self.starts,
             track: Append::append(self.track, item),
-            scan_init: (),
-            scan_fold: (),
+            init: (),
+            fold: (),
         }
     }
 }
@@ -142,8 +142,8 @@ where
             edge: PhantomData,
             starts: self.starts,
             track: self.track,
-            scan_init: init,
-            scan_fold: fold,
+            init: init,
+            fold: fold,
         }
     }
 }
@@ -175,8 +175,8 @@ where
             edge: PhantomData,
             starts: self.starts,
             track: self.track,
-            scan_init: init,
-            scan_fold: fold,
+            init: init,
+            fold: fold,
         }
     }
 }
@@ -227,7 +227,7 @@ where
     }
 }
 
-// TODO: Compile tests for scan_breadth & track
+// TODO: Compile tests for breadth & track
 #[cfg(test)]
 #[allow(dead_code)]
 #[allow(unused_variables)]
@@ -293,7 +293,8 @@ mod compile_tests {
     fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
         left.traverse::<R0>(None::<Entity>)
             .track_self()
-            .for_each(|p, pr, c, cr| {});
+            .fold_breadth(|_, _| 0, |x, _, _| Ok::<_, ()>(x))
+            .for_each(|x, p, pr, c, cr| {});
     }
 
     fn traverse_join(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {

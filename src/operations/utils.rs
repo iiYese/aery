@@ -21,8 +21,8 @@ pub struct TraverseAnd<Control, Edge, Starts, Tracked = (), Init = (), Fold = ()
     pub(crate) edge: PhantomData<Edge>,
     pub(crate) starts: Starts,
     pub(crate) track: Tracked,
-    pub(crate) scan_init: Init,
-    pub(crate) scan_fold: Fold,
+    pub(crate) init: Init,
+    pub(crate) fold: Fold,
 }
 
 /// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
