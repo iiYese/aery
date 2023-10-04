@@ -85,7 +85,7 @@
 
 use bevy::{
     app::{App, Plugin},
-    ecs::{component::Component, entity::Entity},
+    ecs::entity::Entity,
 };
 
 pub mod edges;
@@ -146,7 +146,10 @@ impl Plugin for Aery {
 }
 
 pub mod prelude {
-    pub use super::Var::{self, Wc};
+    pub use super::{
+        Aery,
+        Var::{self, Wc},
+    };
     pub use crate::{
         edges::{RelationCommands, Set, Unset},
         events::{CleanupEvent, Op, TargetEvent},

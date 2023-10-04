@@ -142,8 +142,8 @@ where
             edge: PhantomData,
             starts: self.starts,
             track: self.track,
-            init: init,
-            fold: fold,
+            init,
+            fold,
         }
     }
 }
@@ -175,8 +175,8 @@ where
             edge: PhantomData,
             starts: self.starts,
             track: self.track,
-            init: init,
-            fold: fold,
+            init,
+            fold,
         }
     }
 }
@@ -227,12 +227,11 @@ where
     }
 }
 
-// TODO: Compile tests for breadth & track
 #[cfg(test)]
 #[allow(dead_code)]
 #[allow(unused_variables)]
 mod compile_tests {
-    use crate::{self as aery, prelude::*};
+    use crate::prelude::*;
     use bevy::prelude::*;
 
     #[derive(Component)]
@@ -245,7 +244,7 @@ mod compile_tests {
     struct C;
 
     #[derive(Relation)]
-    #[aery(Counted, Poly)]
+    #[aery(Counted, Poly, Symmetric)]
     struct R0;
 
     #[derive(Relation)]
@@ -357,9 +356,9 @@ mod compile_tests {
     }*/
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod tests {
-    use crate::{self as aery, prelude::*};
+    use crate::prelude::*;
     use bevy::{app::AppExit, prelude::*};
 
     #[derive(Component)]
@@ -375,15 +374,15 @@ mod tests {
     struct C(i32);
 
     #[derive(Relation)]
-    #[multi]
+    #[aery(Poly)]
     struct R0;
 
     #[derive(Relation)]
-    #[multi]
+    #[aery(Poly)]
     struct R1;
 
     #[derive(Relation)]
-    #[multi]
+    #[aery(Poly)]
     struct R2;
 
     #[derive(Resource)]
@@ -428,15 +427,17 @@ mod tests {
             mut b: Query<&mut B>,
             mut c: Query<&mut C>,
         ) {
-            left.ops()
-                .join::<Up<R0>>(&mut a)
-                .join::<Up<R1>>(&mut b)
-                .join::<Up<R2>>(&mut c)
-                .for_each(|_, (mut a, mut b, mut c)| {
-                    a.0 += 1;
-                    b.0 += 1;
-                    c.0 += 1;
-                });
+            for (_, edges) in left.iter() {
+                edges
+                    .join::<Up<R0>>(&mut a)
+                    .join::<Up<R1>>(&mut b)
+                    .join::<Up<R2>>(&mut c)
+                    .for_each(|(mut a, mut b, mut c)| {
+                        a.0 += 1;
+                        b.0 += 1;
+                        c.0 += 1;
+                    });
+            }
         }
 
         fn test(
@@ -507,15 +508,17 @@ mod tests {
             mut b: Query<&mut B>,
             mut c: Query<&mut C>,
         ) {
-            left.ops()
-                .join::<Up<R0>>(&mut a)
-                .join::<Up<R1>>(&mut b)
-                .join::<Up<R2>>(&mut c)
-                .for_each(|_, (mut a, mut b, mut c)| {
-                    a.0 += 1;
-                    b.0 += 1;
-                    c.0 += 1;
-                });
+            for (_, edges) in left.iter() {
+                edges
+                    .join::<Up<R0>>(&mut a)
+                    .join::<Up<R1>>(&mut b)
+                    .join::<Up<R2>>(&mut c)
+                    .for_each(|(mut a, mut b, mut c)| {
+                        a.0 += 1;
+                        b.0 += 1;
+                        c.0 += 1;
+                    });
+            }
         }
 
         fn test(
@@ -590,15 +593,17 @@ mod tests {
             mut b: Query<&mut B>,
             mut c: Query<&mut C>,
         ) {
-            left.ops()
-                .join::<Up<R0>>(&mut a)
-                .join::<Up<R1>>(&mut b)
-                .join::<Up<R2>>(&mut c)
-                .for_each(|_, (mut a, mut b, mut c)| {
-                    a.0 += 1;
-                    b.0 += 1;
-                    c.0 += 1;
-                });
+            for (_, edges) in left.iter() {
+                edges
+                    .join::<Up<R0>>(&mut a)
+                    .join::<Up<R1>>(&mut b)
+                    .join::<Up<R2>>(&mut c)
+                    .for_each(|(mut a, mut b, mut c)| {
+                        a.0 += 1;
+                        b.0 += 1;
+                        c.0 += 1;
+                    });
+            }
         }
 
         fn test(
@@ -666,15 +671,17 @@ mod tests {
             mut b: Query<&mut B>,
             mut c: Query<&mut C>,
         ) {
-            left.ops()
-                .join::<Up<R0>>(&mut a)
-                .join::<Up<R1>>(&mut b)
-                .join::<Up<R2>>(&mut c)
-                .for_each(|_, (mut a, mut b, mut c)| {
-                    a.0 += 1;
-                    b.0 += 1;
-                    c.0 += 1;
-                });
+            for (_, edges) in left.iter() {
+                edges
+                    .join::<Up<R0>>(&mut a)
+                    .join::<Up<R1>>(&mut b)
+                    .join::<Up<R2>>(&mut c)
+                    .for_each(|(mut a, mut b, mut c)| {
+                        a.0 += 1;
+                        b.0 += 1;
+                        c.0 += 1;
+                    });
+            }
         }
 
         fn test(
@@ -700,4 +707,4 @@ mod tests {
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
-}*/
+}

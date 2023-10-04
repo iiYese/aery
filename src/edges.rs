@@ -722,7 +722,7 @@ impl RelationCommands for EntityMut<'_> {
 mod tests {
     use super::Targets;
     use super::{Hosts, OnDelete};
-    use crate::{self as aery, prelude::*};
+    use crate::prelude::*;
     use bevy::prelude::*;
     use std::array::from_fn;
 

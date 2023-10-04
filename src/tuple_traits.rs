@@ -1,13 +1,12 @@
 use crate::{
-    edges::{EdgeInfo, Edges, EdgesItem},
-    operations::utils::{EdgeProduct, EdgeSide, Relations, RelationsItem},
+    edges::{EdgeInfo, Edges},
+    operations::utils::{EdgeProduct, EdgeSide, RelationsItem},
     relation::{Relation, RelationId},
 };
 use core::any::TypeId;
 
 use bevy::{
     ecs::{
-        component::Component,
         entity::Entity,
         query::{ReadOnlyWorldQuery, WorldQuery},
         system::Query,

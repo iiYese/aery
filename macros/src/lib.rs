@@ -2,7 +2,8 @@ use proc_macro::TokenStream;
 use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    parse_macro_input, punctuated::Punctuated, DeriveInput, Error, Ident, Meta, Result, Token,
+    parse_macro_input, parse_quote, punctuated::Punctuated, DeriveInput, Error, Ident, Meta,
+    Result, Token,
 };
 
 struct RelationConfig {
@@ -68,8 +69,7 @@ fn parse_config(ast: &DeriveInput) -> Result<RelationConfig> {
 
 #[proc_macro_derive(Relation, attributes(aery))]
 pub fn relation_derive(input: TokenStream) -> TokenStream {
-    let ast = parse_macro_input!(input as DeriveInput);
-    let ident = &ast.ident;
+    let mut ast = parse_macro_input!(input as DeriveInput);
 
     let RelationConfig {
         policy,
@@ -80,14 +80,20 @@ pub fn relation_derive(input: TokenStream) -> TokenStream {
         Err(e) => return e.into_compile_error().into(),
     };
 
+    ast.generics
+        .make_where_clause()
+        .predicates
+        .push(parse_quote! { Self: Sized + Send + Sync + 'static });
+
+    let struct_name = &ast.ident;
+    let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
+
     let output = quote! {
-        impl Relation for #ident {
+        impl #impl_generics Relation for #struct_name #type_generics #where_clause  {
             const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::#policy;
             const EXCLUSIVE: bool = #exclusive;
             const SYMMETRIC: bool = #symmetric;
         }
-
-        const _: () = <#ident as aery::relation::ZstOrPanic>::ZST_OR_PANIC;
     };
 
     output.into()

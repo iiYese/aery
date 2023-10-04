@@ -65,9 +65,6 @@ impl<R: Relation> Scope<'_, R> {
         self.last = id;
         self
     }
-
-    pub fn recieve(&mut self, entity: Entity) {}
-    pub fn target(&mut self, entity: Entity) {}
 }
 
 impl<'a, T: Relation> Scope<'a, T> {
