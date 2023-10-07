@@ -86,7 +86,7 @@ impl<R: Relation> Default for Targets<R> {
 #[allow(missing_docs)]
 pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
-#[allow(missing_docs)]
+/// World query to get the edge info of a Relation.
 #[derive(WorldQuery)]
 pub struct Edges<R: Relation> {
     pub(crate) hosts: Option<&'static Hosts<R>>,
@@ -144,7 +144,7 @@ pub(crate) struct OnDelete {
     pub hooks: SSUVec<fn(Entity, &mut World)>,
 }
 
-/// Filter to find roots of a relationship graph. Eg for quintessential traversal.
+/// Filter to find roots of a relationship graph.
 /// An entity is a root of `R` if:
 /// - It is targeted by atleast one other entity via `R`.
 /// - It does not target any other entity via `R`.
@@ -646,7 +646,7 @@ impl<R: Relation> Command for Withdraw<R> {
     }
 }
 
-/// An extension API for `EntityMut<'_>` to sugar using relation commands.
+/// An extension API for [`EntityMut`] to sugar using relation commands.
 pub trait RelationCommands {
     /// [`Set`] a relationship target.
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self;

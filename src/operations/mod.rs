@@ -26,20 +26,47 @@ use utils::*;
 /// #[derive(Component)]
 /// struct B;
 ///
+/// #[derive(Component)]
+/// struct C;
+///
+/// #[derive(Component)]
+/// struct D;
+///
 /// #[derive(Relation)]
-/// struct R;
+/// struct R0;
 ///
-/// fn descent(left: Query<((&A, &B), Relations<R>)>, starts: Query<Entity, Root<R>>) {
-///     left.traverse::<R>(starts.iter()).for_each(|(a, b), _| {
+/// #[derive(Relation)]
+/// struct R1;
+///
+/// fn traversals(
+///     mut abcs: Query<((&A, &mut B, &C), Relations<(R0, R1)>)>,
+///     ds: Query<&D>,
+///     starts: Query<Entity, Root<R0>>
+/// ) {
+///     // descent
+///     abcs.traverse::<R0>(starts.iter()).for_each(|(a, b, c), _| {
 ///         // ..
-///     })
+///     });
+///
+///     // ascent
+///     abcs.traverse::<Up<R0>>(starts.iter()).for_each(|(a, b, c), _| {
+///         // ..
+///     });
+///
+///     // mut access
+///     abcs.traverse_mut::<R0>(starts.iter()).for_each(|(a, b, c), _| {
+///         // ..
+///     });
+///
+///     // with joins
+///     abcs.traverse::<R0>(starts.iter()).for_each(|(a, b, c), edges| {
+///         edges.join::<R1>(&ds).for_each(|d| {
+///             // ..
+///         });
+///     });
 /// }
 ///
-/// fn ascent(left: Query<((&A, &B), Relations<R>)>, starts: Query<Entity, Root<R>>) {
-///     left.traverse::<Up<R>>(starts.iter()).for_each(|(a, b), _| {
-///         // ..
-///     })
-/// }
+///# //
 /// ```
 pub trait Traverse<E, I>
 where
@@ -89,8 +116,8 @@ where
     }
 }
 
-/// Let a traversing query track itself. This allows you to see immediate ancestors for desents &
-/// immediate descendants for ascents. See [`Track`] for an explaination on tracking.
+/// Lets a traversing query track itself. This is just immediate ancestors/descendants depending
+/// on if the traversal is a descent or ascent. See [`Track`] for an explaination on tracking.
 ///
 /// # Example
 /// ```
@@ -112,7 +139,7 @@ where
 /// ) {
 ///     left.traverse::<R>(starts.iter())
 ///         .track_self()
-///         .for_each(|(p_a, p_b), _, (c_a, c_b), _| {
+///         .for_each(|(parent_a, parent_b), _, (child_a, child_b), _| {
 ///             // ..
 ///         })
 /// }
@@ -140,7 +167,7 @@ impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
     }
 }
 
-/// Track the last seen set of components when traversing an edge. This is useful in scenarios
+/// Track the last seen from a query when traversing an edge. This is useful in scenarios
 /// where you mightn't have a component on every entity in a hierarchy. For instance it might not
 /// make sense for a component to be on every entity or even an immediate ancestor meaning spam
 /// propogation isn't viable. Scroll areas in UI are one example of this.
@@ -151,7 +178,9 @@ impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
 /// use aery::prelude::*;
 ///
 /// #[derive(Component)]
-/// struct Text(String);
+/// struct Node {
+///     // ..
+/// }
 ///
 /// #[derive(Component)]
 /// struct ScrollArea {
@@ -161,16 +190,16 @@ impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
 /// #[derive(Relation)]
 /// struct Ui;
 ///
-/// fn draw(
+/// fn draw_node_graph(
 ///     mut scroll_areas: Query<&mut ScrollArea>,
-///     tree: Query<(Option<&Text>, Relations<Ui>)>,
+///     tree: Query<(Option<&Node>, Relations<Ui>)>,
 ///     roots: Query<Entity, Root<Ui>>
 /// ) {
 ///     tree.traverse::<Ui>(roots.iter())
 ///         .track(&mut scroll_areas)
-///         .for_each(|scroll_area, text, _| {
-///             if let Some(text) = text {
-///                 // draw text to scroll area
+///         .for_each(|scroll_area, node, _| {
+///             if let Some(node) = node {
+///                 // draw node to scroll area
 ///             }
 ///         });
 /// }
@@ -208,9 +237,11 @@ where
 
 /// Passes each breadth twice doing a fold operation the first time for traversals that
 /// [`TrackSelf`].
-/// - The init closure recieves the ancestor entity & returns an initial value.
-/// - The fold closure recieves each descendant & the accumulated value so far.
-/// - Returning an [`Ok`] from the fold closure advances it to the next child.
+/// - The init closure recieves the components of the entity who's breadth we're currently passing
+/// & returns an inital value.
+/// - The fold closure recieves the componetns from each entity in the breadth, the accumulated
+/// value so far & returns a result.
+/// - Returning an [`Ok`] from the fold closure advances it to the next item in the breadth.
 /// - Returning an [`Err`] from the fold closure ends the fold & starts the second pass in the
 /// `.for_each` immediately.
 ///
@@ -246,11 +277,11 @@ where
 ///         .track_self()
 ///         .fold_breadth(
 ///             |(size, dir, _), _| {
-///                 /* get available space based on child dir */
+///                 /* get available space for on child layout direction */
 ///                 # 0
 ///             },
 ///             |available, (size, _, spacing), _| {
-///                 /* calculate actual space for each child */
+///                 /* calculate size of children that take up a proportion of the free space */
 ///                 # Ok::<_, ()>(0)
 ///             }
 ///         )
@@ -342,10 +373,14 @@ where
 }
 
 /// Join multiple queries together via edges.
-/// # Example
+/// # Examples
+/// ### Simple join
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct Pos(Vec2);
 ///
 /// // Instancing geometry from vector graphics
 /// #[derive(Component)]
@@ -355,19 +390,95 @@ where
 ///
 /// #[derive(Relation)]
 /// #[aery(Total)]
-/// struct Instance;
+/// struct InstanceOf;
 ///
-/// fn render_instances(
-///     meshes: Query<(&DynamicMesh, Relations<Instance>)>,
-///     instances: Query<&Transform>,
+/// fn render_all_instances(
+///     meshes: Query<(&DynamicMesh, Relations<InstanceOf>)>,
+///     instances: Query<&Pos>,
 /// ) {
 ///     for (mesh, edges) in meshes.iter() {
-///         edges.join::<Instance>(&instances).for_each(|instance| {
+///         edges.join::<InstanceOf>(&instances).for_each(|pos| {
 ///             // Render mesh
 ///         })
 ///     }
 /// }
 ///
+/// # fn in_camera_view() -> bool { true }
+/// // or join the other way aroind
+/// fn render_in_view(
+///     camera: Query<&Camera>,
+///     meshes: Query<&DynamicMesh>,
+///     instances: Query<(&Pos, Relations<InstanceOf>)>,
+///
+/// ) {
+///     for (pos, edges) in instances.iter() {
+///         // The API is still `for_each` but there will only be at most 1 match in this case
+///         // because edges are exclusive by default
+///         edges.join::<Up<InstanceOf>>(&meshes).for_each(|mesh| {
+///             if !in_camera_view() { return }
+///             // Draw mesh
+///         });
+///     }
+/// }
+/// ```
+/// ### Multiple joins
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A(u32);
+///
+/// #[derive(Component)]
+/// struct B(u32);
+///
+/// #[derive(Component)]
+/// struct C(u32);
+///
+/// #[derive(Relation)]
+/// struct R0;
+///
+/// #[derive(Relation)]
+/// struct R1;
+///
+/// fn setup(world: &mut World) {
+///     let [a0, a1, a2] = std::array::from_fn(|n| world.spawn(A(n as u32)).id());
+///
+///     world.spawn(B(0))
+///          .set::<R0>(a0);
+///
+///     world.spawn_empty()
+///          .set::<R0>(a1);
+///
+///     world.spawn(B(1))
+///          .set::<R0>(a2)
+///          .set::<R1>(a1);
+///
+///     world.spawn(C(0))
+///          .set::<R1>(a0)
+///          .set::<R1>(a1);
+///
+///     world.spawn(C(1))
+///          .set::<R1>(a0);
+///
+///     world.spawn(C(2));
+///
+///     world.spawn(C(3))
+///          .set::<R1>(a2);
+/// }
+///
+/// fn sys(a: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
+///     for (a, edges) in a.iter() {
+///         // Iterates through permutations of matches
+///         edges.join::<R0>(&b).join::<R1>(&c).for_each(|(b, c)| {
+///             println!("A({}), B({}), C({})", a.0, b.0, c.0)
+///             // Prints:
+///             // A(0), B(0), C(0)
+///             // A(0), B(0), C(1)
+///             // A(1), B(1), C(3)
+///         });
+///     }
+/// }
 /// ```
 pub trait Join<Item>
 where
@@ -388,6 +499,7 @@ where
     type Out<Edge: EdgeSide> = JoinWith<Self, (Edge,), (Item,)>;
 
     fn join<Edge: EdgeSide>(self, item: Item) -> Self::Out<Edge> {
+        let _ = RS::ZST_OR_PANIC;
         let _ = Edge::ZST_OR_PANIC;
 
         JoinWith {
@@ -416,135 +528,6 @@ where
             items: Append::append(self.items, item),
         }
     }
-}
-
-#[cfg(test)]
-#[allow(dead_code)]
-#[allow(unused_variables)]
-mod compile_tests {
-    use crate::prelude::*;
-    use bevy::prelude::*;
-
-    #[derive(Component)]
-    struct A;
-
-    #[derive(Component)]
-    struct B;
-
-    #[derive(Component)]
-    struct C;
-
-    #[derive(Relation)]
-    #[aery(Counted, Poly, Symmetric)]
-    struct R0;
-
-    #[derive(Relation)]
-    struct R1;
-
-    fn join_immut(left: Query<(&A, Relations<(R0, R1)>)>, b: Query<&B>, c: Query<&C>) {
-        for (a, edges) in left.iter() {
-            edges.join::<R0>(&b).join::<R1>(&c).for_each(|(b, c)| {});
-        }
-    }
-
-    fn join_left_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>, b: Query<&C>, c: Query<&C>) {
-        for (a, edges) in left.iter_mut() {
-            edges.join::<R0>(&b).join::<R1>(&c).for_each(|(b, c)| {});
-        }
-    }
-
-    fn join_right_mut(
-        left: Query<(&A, Relations<(R0, R1)>)>,
-        mut b: Query<&mut B>,
-        mut c: Query<&mut C>,
-    ) {
-        for (a, edges) in left.iter() {
-            edges
-                .join::<R0>(&mut b)
-                .join::<R1>(&mut c)
-                .for_each(|(b, c)| {});
-        }
-    }
-
-    fn join_full_mut(
-        mut left: Query<(&mut A, Relations<(R0, R1)>)>,
-        mut b: Query<&mut B>,
-        mut c: Query<&mut C>,
-    ) {
-        for (a, edges) in left.iter_mut() {
-            edges
-                .join::<R0>(&mut b)
-                .join::<R1>(&mut c)
-                .for_each(|(b, c)| {});
-        }
-    }
-
-    fn traverse_immut(left: Query<(&A, Relations<(R0, R1)>)>) {
-        left.traverse::<R0>(None::<Entity>)
-            .track_self()
-            .fold_breadth(|_, _| 0, |x, _, _| Ok::<_, ()>(x))
-            .for_each(|x, p, pr, c, cr| {});
-    }
-
-    fn traverse_join(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.traverse::<R0>(None::<Entity>).for_each(|a, rels| {
-            rels.join::<R1>(&right).for_each(|right| {});
-        });
-    }
-
-    fn traverse_mut_join(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
-        left.traverse::<R0>(None::<Entity>).for_each(|a, rels| {
-            rels.join::<R1>(&mut right).for_each(|right| {});
-        });
-    }
-
-    fn traverse_join_imperative_mi(mut left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.traverse_mut::<R0>(None::<Entity>).for_each(|a, rels| {
-            rels.join::<R1>(&right).for_each(|right| {});
-        });
-    }
-
-    fn track(left: Query<(&A, Relations<R0>)>, right: Query<(&C, Relations<R1>)>) {
-        left.traverse::<R0>(None::<Entity>)
-            .track(&right)
-            .for_each(|c, a, _| {});
-    }
-
-    fn track_right_mut(left: Query<(&A, Relations<R0>)>, mut right: Query<&mut C>) {
-        left.traverse::<R0>(None::<Entity>)
-            .track(&mut right)
-            .for_each(|c, a, _| {});
-    }
-
-    /*fn traverse_mut(mut left: Query<(&mut A, Relations<(R0, R1)>)>) {
-        left.ops_mut()
-            .traverse::<R0>(Entity::PLACEHOLDER)
-            .track_self()
-            .for_each(|a0, a1| {});
-    }
-
-    fn traverse_immut_joined(left: Query<(&A, Relations<(R0, R1)>)>, right: Query<&B>) {
-        left.ops()
-            .traverse::<R0>(Entity::PLACEHOLDER)
-            .track_self()
-            .join::<R1>(&right)
-            .for_each(|a0, a1, b| {});
-    }
-
-    fn traverse_mut_joined_mut(left: Query<(&A, Relations<(R0, R1)>)>, mut right: Query<&mut B>) {
-        left.ops()
-            .traverse::<R0>(Entity::PLACEHOLDER)
-            .join::<R1>(&mut right)
-            .track_self()
-            .for_each(|a0, a1, b| {});
-    }
-
-    fn query_optional(left: Query<(&A, Relations<(R0, Option<R1>)>)>, b: Query<&B>, c: Query<&C>) {
-        left.ops()
-            .join::<R0>(&b)
-            .join::<R1>(&c)
-            .for_each(|a, (b, c)| {});
-    }*/
 }
 
 #[cfg(test)]

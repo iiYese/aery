@@ -79,8 +79,19 @@ impl<T> ZstOrPanic for T {}
 ///         assert_eq!(world.get_entity(entity).is_some(), expected)
 ///     }
 /// }
+///# use bevy::app::AppExit;
+///#
+///# fn exit_system(mut exit: EventWriter<AppExit>) {
+///#     exit.send(AppExit);
+///# }
+///#
+///# fn main() {
+///#     App::new()
+///#         .add_systems(Startup, (sys, exit_system).chain())
+///#         .run();
+///# }
 /// ```
-/// ## After creation before cleanup:
+/// ## Before cleanup:
 /// ```mermaid
 /// flowchart BT
 /// E1 --R--> E0
@@ -126,8 +137,8 @@ pub enum CleanupPolicy {
 
 /// The relation trait. This is what controls the cleanup, exclusivity & symmetry of a relation.
 /// Relations can be thought of as arrows. The terms Aery uses for the base and head of this arrow
-/// are "host" and "target" respectively. With both the host and target being entities. Both the
-/// host and target are "participants". Exclusive relations that face bottom up in hierarchies have
+/// are "host" and "target" respectively. With both the host and target being entities.
+/// Exclusive relations that face bottom up in hierarchies have
 /// many favorable properties so these are the default.
 ///
 /// Note that relations:
@@ -147,7 +158,7 @@ pub trait Relation: 'static + Sized + Send + Sync {
     /// or when a relation is unset.
     const CLEANUP_POLICY: CleanupPolicy = CleanupPolicy::Orphan;
 
-    /// Whether or not an entity is allowed to have more than 1 of this relation type.
+    /// Whether or not an entity is allowed to host more than 1 of this relation type.
     /// Entities can still be targeted multiple times by different entities with this relation.
     /// Entities cannot however host more than 1 of this relation at a time.
     /// Setting an exclusive relation that is already set will unset the existing relation.

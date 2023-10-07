@@ -382,7 +382,7 @@ macro_rules! impl_trackable {
             )
                 -> Option<Self::Out>
             {
-                $(let Some($v) = Trackable::retrieve($p, [$e]) else { return None };)*
+                $(let $v = Trackable::retrieve($p, [$e])?;)*
                 Some(($($v,)*))
             }
         }

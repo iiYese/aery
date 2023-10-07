@@ -17,6 +17,7 @@ use bevy::ecs::{
 
 use std::marker::PhantomData;
 
+/// TODO: Example + mermaid illustration
 /// Builder API to construct hierarchies of relations.
 pub struct Scope<'w, T> {
     top: Entity,

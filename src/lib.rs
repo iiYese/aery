@@ -1,15 +1,15 @@
 #![allow(clippy::type_complexity)]
+#![allow(clippy::needless_doctest_main)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::let_unit_value)]
 #![warn(missing_docs)]
 
 //! # Aery
-//! A plugin that adds a subset of Entity Relationship features to Bevy using Non-fragmenting
-//! ZST relations.
+//! A plugin that adds a subset of Entity Relationship features to Bevy.
 //!
 //! ### Currently supported:
-//! - ZST relations
-//! - Fragmenting on (relation) type
+//! - ZST edge types only (simply means edges can't hold data)
+//! - Fragmenting on edge types
 //! - Cleanup policies
 //! - Declarative APIs for:
 //!   - Joining
@@ -19,6 +19,7 @@
 //! # API tour:
 //! Non exhaustive. Covers most common parts.
 //! ```
+//! // Modeling an item system where the enviornment can influence items.
 //! use bevy::prelude::*;
 //! use aery::prelude::*;
 //!
@@ -30,58 +31,33 @@
 //!         .run();
 //! }
 //!
-//! #[derive(Component)]
-//! struct Foo;
-//!
-//! #[derive(Component)]
-//! struct Bar;
-//!
 //! #[derive(Relation)]
-//! #[cleanup(policy = "Recursive")]
-//! struct ChildOf;
+//! struct Inventory;
 //!
-//! #[derive(Relation)]
-//! #[multi]
-//! struct Bag;
+//! #[derive(Component)]
+//! struct Player;
 //!
-//! // Spawning entities with relations
-//! fn setup(mut commands: Commands) {
-//!     // A hierarchy of Foos with (chocolate? OwO) Bars in their Bags
-//!     commands.add(|wrld: &mut World| {
-//!         wrld.spawn(Foo)
-//!             .scope::<ChildOf>(|_, mut child| {
-//!                 child.insert(Foo);
-//!                 child.scope_target::<Bag>(|_, mut bag| { bag.insert(Bar); });
-//!             })
-//!             .scope::<ChildOf>(|_, mut child| {
-//!                 child.insert(Foo);
-//!                 child.scope_target::<Bag>(|_, mut bag| { bag.insert(Bar); });
-//!             });
-//!     })
+//! #[derive(Component)]
+//! struct Freshness(f32);
+//!
+//! #[derive(Component)]
+//! struct Raw;
+//!
+//! #[derive(Component)]
+//! struct Cooked;
+//!
+//! #[derive(Component)]
+//! struct Potato;
+//!
+//! // Climate logic
+//! enum Climate {
+//!     Freezing,
+//!     Cold,
+//!     Neutral,
+//!     Hot,
+//!     Blazing,
 //! }
 //!
-//! // Listening for relation events
-//! fn alert(mut events: EventReader<TargetEvent>) {
-//!     for event in events.iter() {
-//!         if event.matches(Wc, TargetOp::Set, ChildOf, Wc) {
-//!             println!("{:?} was added as a child of {:?}", event.host, event.target);
-//!         }
-//!     }
-//! }
-//!
-//! // Relation Queries
-//! fn sys(
-//!     foos: Query<(&Foo, Relations<(Bag, ChildOf)>)>,
-//!     roots: Query<Entity, Root<ChildOf>>,
-//!     bars: Query<&Bar>,
-//! ) {
-//!     foos.ops()
-//!         .join::<Bag>(&bars)
-//!         .traverse::<ChildOf>(roots.iter())
-//!         .for_each(|foo_parent, foo, bar| {
-//!             // ..
-//!         })
-//! }
 //! ```
 
 use bevy::{

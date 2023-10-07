@@ -11,6 +11,8 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
+// TODO: CF illustrations
+
 /// Control flow enum for [`Join`] operations.
 ///
 /// [`Join`]: crate::operations::Join

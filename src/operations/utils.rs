@@ -8,7 +8,7 @@ use bevy::ecs::{entity::Entity, query::WorldQuery};
 
 use std::marker::PhantomData;
 
-#[allow(missing_docs)]
+/// Struct to track metadat for a join operation.
 pub struct JoinWith<Relations, JoinEdges, JoinItems> {
     pub(crate) relations: Relations,
     pub(crate) edges: PhantomData<JoinEdges>,
@@ -18,7 +18,7 @@ pub struct JoinWith<Relations, JoinEdges, JoinItems> {
 #[allow(missing_docs)]
 pub struct SelfTracking;
 
-#[allow(missing_docs)]
+/// Struct to track metadat for a traversal operation.
 pub struct TraverseAnd<Control, Edge, Starts, Tracked = (), Init = (), Fold = ()> {
     pub(crate) control: Control,
     pub(crate) edge: PhantomData<Edge>,
@@ -28,10 +28,11 @@ pub struct TraverseAnd<Control, Edge, Starts, Tracked = (), Init = (), Fold = ()
     pub(crate) fold: Fold,
 }
 
-/// `WorldQuery` type to query for Relation types. Takes a [`RelationSet`] which is a single
+/// [`WorldQuery`] type to query for Relation types. Takes a [`RelationSet`] which is a single
 /// relation or tuple of relation types. *Must appear in the second position of the outer most tuple
 /// to use relation operations and no type may appear more than once for operations to work.*
-/// See [`AeryQueryExt`] for operations.
+///
+/// [`RelationSet`]: crate::tuple_traits::RelationSet
 #[derive(WorldQuery)]
 pub struct Relations<RS: RelationSet> {
     pub(crate) edges: RS::Edges,
