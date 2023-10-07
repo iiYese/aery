@@ -11,15 +11,102 @@ use bevy::ecs::{
 
 use std::{borrow::Borrow, collections::VecDeque};
 
-// TODO: CF illustrations
-
 /// Control flow enum for [`Join`] operations.
 ///
 /// [`Join`]: crate::operations::Join
 pub enum JCF {
     /// Continue iterating permutations of matches.
     Continue,
-    /// Skip permutations until the nth join is advanced to the next match.
+    /// Skip permutations until the nth join is advanced to the next match. Useful for multiple
+    /// joins to avoid unnecessary permutation iteration. Fast forwarding is an `O(1)` operation.
+    /// ## FastForward Illustration:
+    /// ```
+    /// use bevy::prelude::*;
+    /// use aery::prelude::*;
+    ///
+    /// #[derive(Component)]
+    /// struct A;
+    ///
+    /// #[derive(Component)]
+    /// struct B(usize);
+    ///
+    /// #[derive(Component)]
+    /// struct C(usize);
+    ///
+    /// #[derive(Component)]
+    /// struct D(usize);
+    ///
+    /// #[derive(Relation)]
+    /// struct R0;
+    ///
+    /// #[derive(Relation)]
+    /// struct R1;
+    ///
+    /// #[derive(Relation)]
+    /// struct R2;
+    ///
+    /// fn setup(world: &mut World) {
+    ///     let a = world.spawn(A).id();
+    ///
+    ///     for n in 0..3 {
+    ///         world.spawn(B(n)).set::<R0>(a);
+    ///         world.spawn(C(n)).set::<R1>(a);
+    ///         world.spawn(D(n)).set::<R2>(a);
+    ///     }
+    /// }
+    ///
+    /// fn fast_forward(
+    ///     a: Query<(&A, Relations<(R0, R1, R2)>)>,
+    ///     b: Query<&B>,
+    ///     c: Query<&C>,
+    ///     d: Query<&D>
+    /// ) {
+    ///     for (_, edges) in a.iter() {
+    ///         edges
+    ///             .join::<R0>(&b)
+    ///             .join::<R1>(&c)
+    ///             .join::<R2>(&d)
+    ///             .for_each(|(b, c, d)| {
+    ///                 if c.0 == 1 { return JCF::FastForward(1) }
+    ///                 println!("({}, {}, {})", b.0, c.0, d.0);
+    ///                 JCF::Continue
+    ///             });
+    ///     }
+    /// }
+    /// ```
+    /// Output:
+    /// ```ignore
+    ///     (0, 0, 0)
+    ///     (0, 0, 1)
+    ///     (0, 0, 2)
+    /// //  Skipped:
+    /// //  (0, 1, 0)
+    /// //  (0, 1, 1)
+    /// //  (0, 1, 2)
+    ///     (0, 2, 0)
+    ///     (0, 2, 1)
+    ///     (0, 2, 2)
+    ///     (1, 0, 0)
+    ///     (1, 0, 1)
+    ///     (1, 0, 2)
+    /// //  Skipped:
+    /// //  (1, 1, 0)
+    /// //  (1, 1, 1)
+    /// //  (1, 1, 2)
+    ///     (1, 2, 0)
+    ///     (1, 2, 1)
+    ///     (1, 2, 2)
+    ///     (2, 0, 0)
+    ///     (2, 0, 1)
+    ///     (2, 0, 2)
+    /// //  Skipped:
+    /// //  (2, 1, 0)
+    /// //  (2, 1, 1)
+    /// //  (2, 1, 2)
+    ///     (2, 2, 0)
+    ///     (2, 2, 1)
+    ///     (2, 2, 2)
+    /// ```
     FastForward(usize),
     /// Terminate the loop.
     Exit,
@@ -81,17 +168,97 @@ where
     }
 }
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// Control flow enum for [`Traverse`] operations.
+/// ## Illustrations
+/// Pink == traversed.
+///
+/// ### Close
+/// ```rust
+///# use bevy::prelude::*;
+///# use aery::prelude::*;
+///# #[derive(Relation)]
+///# struct R;
+///#
+///# #[derive(Component)]
+///# struct E(usize);
+///
+/// fn sys(query: Query<(&E, Relations<R>)>, roots: Query<Entity, Root<R>>) {
+///     query.traverse::<R>(roots.iter()).for_each(|E(e), _| {
+///         if *e == 2 { return TCF::Close }
+///
+///         // do stuff
+///
+///         TCF::Continue
+///     })
+/// }
+/// ```
+/// ```mermaid
+/// flowchart BT
+/// classDef pink fill:#f66
+///
+/// E1:::pink --R--> E0:::pink
+/// E2:::pink --R--> E0:::pink
+/// E3:::pink --R--> E0:::pink
+///
+/// E4:::pink --R--> E1:::pink
+/// E5:::pink --R--> E1:::pink
+///
+/// E6 --R--> E2:::pink
+/// E7 --R--> E2:::pink
+///
+/// E8:::pink --R--> E3
+/// E9:::pink --R--> E3
+/// ```
+///
+/// ### Probe
+/// ```rust
+///# use bevy::prelude::*;
+///# use aery::prelude::*;
+///# #[derive(Relation)]
+///# struct R;
+///#
+///# #[derive(Component)]
+///# struct E(usize);
+///
+/// fn sys(query: Query<(&E, Relations<R>)>, roots: Query<Entity, Root<R>>) {
+///     query.traverse::<R>(roots.iter()).for_each(|E(e), _| {
+///         if *e == 2 { return TCF::Probe }
+///
+///         // do stuff
+///
+///         TCF::Continue
+///     })
+/// }
+/// ```
+/// ```mermaid
+/// flowchart BT
+/// classDef pink fill:#f66
+///
+/// E1:::pink --R--> E0:::pink
+/// E2:::pink --R--> E0:::pink
+/// E3 --R--> E0:::pink
+///
+/// E4 --R--> E1:::pink
+/// E5 --R--> E1:::pink
+///
+/// E6:::pink --R--> E2:::pink
+/// E7:::pink --R--> E2:::pink
+///
+/// E8 --R--> E3
+/// E9 --R--> E3
+/// ```
 ///
 /// [`Traverse`]: crate::operations::Traverse
 pub enum TCF {
-    /// Continue iterating through the graph.
+    /// Continue going through the graph.
     Continue,
-    /// Immediately iterate the current node's breadth & stop iterating any other opened edges.
-    Probe,
-    /// Close the current node for iteration ie. traversal will not go deeper into the graph
+    /// Close the current node off from expansion. Traversal will not go deeper into the graph
     /// through this node.
     Close,
+    /// Immediately expand the current node's edges & close all other open paths for further
+    /// expansion.
+    Probe,
     /// Terminate the loop.
     Exit,
 }

@@ -277,11 +277,11 @@ where
 ///         .track_self()
 ///         .fold_breadth(
 ///             |(size, dir, _), _| {
-///                 /* get available space for on child layout direction */
+///                 // get available space for on child layout direction
 ///                 # 0
 ///             },
 ///             |available, (size, _, spacing), _| {
-///                 /* calculate size of children that take up a proportion of the free space */
+///                 // calculate size of children that take up a proportion of the free space
 ///                 # Ok::<_, ()>(0)
 ///             }
 ///         )
