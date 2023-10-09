@@ -1,7 +1,10 @@
 use crate::{
-    operations::EdgeProduct,
-    relation::{EdgeWQItem, Participates, Relation},
+    edges::{EdgeInfo, Edges},
+    operations::utils::{EdgeProduct, EdgeSide, RelationsItem},
+    relation::{Relation, RelationId},
 };
+use core::any::TypeId;
+
 use bevy::{
     ecs::{
         entity::Entity,
@@ -16,6 +19,7 @@ mod sealed {
     pub trait Sealed {}
 
     impl<R: Relation> Sealed for R {}
+    impl<R: Relation> Sealed for Option<R> {}
 
     impl<Q, F> Sealed for &'_ Query<'_, '_, Q, F>
     where
@@ -33,10 +37,10 @@ mod sealed {
 
     macro_rules! impl_sealed {
         ($($P:ident),*) => {
-            impl<$($P: Sealed),*> Sealed for ($($P,)*) {
-            }
+            impl<$($P: Sealed),*> Sealed for ($($P,)*) {}
         };
     }
+
     all_tuples!(impl_sealed, 1, 16, P);
 }
 
@@ -47,48 +51,7 @@ macro_rules! count {
     ($_:tt $($tail:tt)*) => { 1  + count!($($tail)*) };
 }
 
-pub trait RelationSet: Sized + Sealed {
-    type Filters: ReadOnlyWorldQuery;
-}
-
-impl<R: Relation> RelationSet for R {
-    type Filters = Participates<R>;
-}
-
-macro_rules! impl_relation_set {
-    ($($P:ident),*) => {
-        impl<$($P: Relation),*> RelationSet for ($($P,)*) {
-            type Filters = ($(Participates<$P>,)*);
-        }
-    };
-}
-
-all_tuples!(impl_relation_set, 1, 15, P);
-
-pub trait Product<const N: usize> {
-    fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, N>;
-}
-
-macro_rules! impl_product {
-    ($($P:ident),*) => {
-        impl<$($P: Relation),*> Product<{ count!($($P )*) }> for ($($P,)*) {
-            fn product(edges: EdgeWQItem<'_>) -> EdgeProduct<'_, { count!($($P )*) }> {
-                let base_iterators = [$(edges.edges.iter_targets::<$P>(),)*];
-                let live_iterators = base_iterators.clone();
-                let entities = [None::<Entity>; count!($($P )*)];
-
-                EdgeProduct {
-                    base_iterators,
-                    live_iterators,
-                    entities,
-                }
-            }
-        }
-    };
-}
-
-all_tuples!(impl_product, 1, 15, P);
-
+#[doc(hidden)]
 pub trait Append {
     type Out<Item>;
     fn append<Item>(tup: Self, item: Item) -> Self::Out<Item>;
@@ -114,6 +77,138 @@ macro_rules! impl_append {
 
 all_tuples!(impl_append, 1, 15, P, p);
 
+#[doc(hidden)]
+pub trait RelationSet: Sized + Sealed {
+    type Edges: ReadOnlyWorldQuery;
+    type Types: 'static;
+}
+
+impl<R: Relation> RelationSet for R {
+    type Edges = Edges<R>;
+    type Types = R;
+}
+
+impl<R: Relation> RelationSet for Option<R> {
+    type Edges = Option<Edges<R>>;
+    type Types = R;
+}
+
+macro_rules! impl_relation_set {
+    ($($P:ident),*) => {
+        impl<$($P: RelationSet),*> RelationSet for ($($P,)*) {
+            type Edges = ($($P::Edges,)*);
+            type Types = ($($P::Types,)*);
+        }
+    };
+}
+
+all_tuples!(impl_relation_set, 1, 15, P);
+
+/// Get information from multiple edge buckets.
+pub trait RelationEntries {
+    /// Get all hosts of a relation type.
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity];
+    /// Get all targets of a relation type.
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity];
+}
+
+impl<R: Relation> RelationEntries for RelationsItem<'_, R> {
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
+            self.edges.hosts()
+        } else {
+            &[]
+        }
+    }
+
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
+            self.edges.targets()
+        } else {
+            &[]
+        }
+    }
+}
+
+impl<R: Relation> RelationEntries for RelationsItem<'_, Option<R>> {
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
+            self.edges.hosts()
+        } else {
+            &[]
+        }
+    }
+
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<R>() == id.into().0 {
+            self.edges.targets()
+        } else {
+            &[]
+        }
+    }
+}
+
+macro_rules! impl_relation_entries {
+    ($(($P:ident, $e:ident)),*) => {
+        impl<$($P: RelationSet),*> RelationEntries for RelationsItem<'_, ($($P,)*)>
+        where
+            $(for<'a> <<$P::Edges as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>: EdgeInfo,)*
+        {
+            fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+                let id = id.into();
+                let ($($e,)*) = &self.edges;
+                $(if TypeId::of::<$P::Types>() == id.0 { return $e.hosts() })*
+                &[]
+            }
+
+            fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+                let id = id.into();
+                let ($($e,)*) = &self.edges;
+                $(if TypeId::of::<$P::Types>() == id.0 { return $e.targets() })*
+                &[]
+            }
+        }
+    }
+}
+
+all_tuples!(impl_relation_entries, 1, 15, P, e);
+
+#[doc(hidden)]
+pub trait Product<const N: usize> {
+    fn product<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeProduct<'r, N>
+    where
+        'i: 'r,
+        RS: RelationSet,
+        RelationsItem<'i, RS>: RelationEntries;
+}
+
+macro_rules! impl_product {
+    ($($P:ident),*) => {
+        impl<$($P: EdgeSide),*> Product<{ count!($($P )*) }> for ($($P,)*) {
+            fn product<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>)
+                -> EdgeProduct<'r, { count!($($P )*) }>
+            where
+                'i: 'r,
+                RS: RelationSet,
+                RelationsItem<'i, RS>: RelationEntries
+            {
+                let base_iterators = [$(<$P as EdgeSide>::entities(&relations),)*];
+                let live_iterators = base_iterators.clone();
+                let entities = [None::<Entity>; count!($($P )*)];
+
+                EdgeProduct {
+                    base_iterators,
+                    live_iterators,
+                    entities,
+                }
+            }
+        }
+    };
+}
+
+all_tuples!(impl_product, 1, 15, P);
+
+#[doc(hidden)]
 pub trait Joinable<'a, const N: usize>: Sealed {
     type Out;
     fn check(items: &Self, entities: [Entity; N]) -> [bool; N];
@@ -128,7 +223,7 @@ where
     type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
 
     fn check(items: &Self, [e0]: [Entity; 1]) -> [bool; 1] {
-        [items.get(e0).is_ok()]
+        [items.contains(e0)]
     }
 
     fn join(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
@@ -144,7 +239,7 @@ where
     type Out = <Q as WorldQuery>::Item<'a>;
 
     fn check(items: &Self, [e0]: [Entity; 1]) -> [bool; 1] {
-        [items.get(e0).is_ok()]
+        [items.contains(e0)]
     }
 
     fn join(items: &'a mut Self, [e0]: [Entity; 1]) -> Self::Out {
@@ -181,7 +276,7 @@ macro_rules! impl_joinable {
             )
                 -> [bool; count!($($p )*)]
             {
-                $(let [$v] = Joinable::check($p, [$e]); )*
+                $(let [$v] = Joinable::check($p, [$e]);)*
                 [$($v,)*]
             }
 
@@ -191,7 +286,7 @@ macro_rules! impl_joinable {
             )
                 -> Self::Out
             {
-                $(let $v = Joinable::join($p, [$e]); )*
+                $(let $v = Joinable::join($p, [$e]);)*
                 ($($v,)*)
             }
         }
@@ -199,3 +294,99 @@ macro_rules! impl_joinable {
 }
 
 all_tuples!(impl_joinable, 2, 15, P, p, e, v);
+
+#[doc(hidden)]
+pub trait Trackable<'a, const N: usize>: Sealed {
+    type Out;
+    fn update(items: &Self, entity: Entity, fallback: [Entity; N]) -> [Entity; N];
+    fn retrieve(items: &'a mut Self, entities: [Entity; N]) -> Option<Self::Out>;
+}
+
+impl<'a, Q, F> Trackable<'a, 1> for &'_ Query<'_, '_, Q, F>
+where
+    Q: WorldQuery,
+    F: ReadOnlyWorldQuery,
+{
+    type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
+
+    fn update(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
+        [if items.contains(entity) {
+            entity
+        } else {
+            fallback
+        }]
+    }
+
+    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Option<Self::Out> {
+        items.get(e0).ok()
+    }
+}
+
+impl<'a, Q, F> Trackable<'a, 1> for &'_ mut Query<'_, '_, Q, F>
+where
+    Q: WorldQuery,
+    F: ReadOnlyWorldQuery,
+{
+    type Out = <Q as WorldQuery>::Item<'a>;
+
+    fn update(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
+        [if items.contains(entity) {
+            entity
+        } else {
+            fallback
+        }]
+    }
+
+    fn retrieve(items: &'a mut Self, [e0]: [Entity; 1]) -> Option<Self::Out> {
+        items.get_mut(e0).ok()
+    }
+}
+
+impl<'a, P0> Trackable<'a, 1> for (P0,)
+where
+    P0: Sealed + Trackable<'a, 1>,
+{
+    type Out = <P0 as Trackable<'a, 1>>::Out;
+
+    fn update((p0,): &Self, entity: Entity, [e0]: [Entity; 1]) -> [Entity; 1] {
+        Trackable::update(p0, entity, [e0])
+    }
+
+    fn retrieve((p0,): &'a mut Self, [e0]: [Entity; 1]) -> Option<Self::Out> {
+        Trackable::retrieve(p0, [e0])
+    }
+}
+
+macro_rules! impl_trackable {
+    ($(($P:ident, $p:ident, $e:ident, $v:ident)),*) => {
+        impl<'a, $($P),*> Trackable<'a, { count!($($P )*) }> for ($($P,)*)
+        where
+            $($P: Trackable<'a, 1>,)*
+        {
+            type Out = ($(<$P as Trackable<'a, 1>>::Out,)*);
+
+            fn update(
+                ($($p,)*): &Self,
+                entity: Entity,
+                [$($e,)*]: [Entity; count!($($P )*)]
+            )
+                -> [Entity; count!($($p )*)]
+            {
+                $(let [$v] = Trackable::update($p, entity, [$e]);)*
+                [$($v,)*]
+            }
+
+            fn retrieve(
+                ($($p,)*): &'a mut Self,
+                [$($e,)*]: [Entity; count!($($P )*)]
+            )
+                -> Option<Self::Out>
+            {
+                $(let $v = Trackable::retrieve($p, [$e])?;)*
+                Some(($($v,)*))
+            }
+        }
+    }
+}
+
+all_tuples!(impl_trackable, 2, 15, P, p, e, v);

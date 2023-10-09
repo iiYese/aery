@@ -3,24 +3,27 @@ use crate::{relation::RelationId, Var};
 use bevy::ecs::{entity::Entity, event::Event};
 use std::cmp::PartialEq;
 
+/// Operation type of a relation target event.
+#[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TargetOp {
+pub enum Op {
     Set,
     Unset,
 }
 
-impl From<TargetOp> for Var<TargetOp> {
-    fn from(op: TargetOp) -> Self {
+impl From<Op> for Var<Op> {
+    fn from(op: Op) -> Self {
         Self::Val(op)
     }
 }
 
 /// An event to notify when a target has changed for a relation.
+#[allow(missing_docs)]
 #[derive(Event, Clone, Copy, Debug)]
 pub struct TargetEvent {
     pub host: Entity,
     pub target: Entity,
-    pub target_op: TargetOp,
+    pub target_op: Op,
     pub relation_id: RelationId,
 }
 
@@ -49,7 +52,7 @@ impl TargetEvent {
     ///
     ///     for event in events.iter() {
     ///         // Anything Set anything to anything else
-    ///         if event.matches(Wc, TargetOp::Set, Wc, Wc) {
+    ///         if event.matches(Wc, Op::Set, Wc, Wc) {
     ///             if let Ok(a) = a.get(event.host) {
     ///                 // Do something if it was a host with an `A` component
     ///             }
@@ -60,17 +63,17 @@ impl TargetEvent {
     ///         }
     ///
     ///         // foo Set an `R` to bar
-    ///         if event.matches(foo, TargetOp::Set, R, bar) {
+    ///         if event.matches(foo, Op::Set, R, bar) {
     ///             // ..
     ///         }
     ///
     ///         // foo Set an `R` to something
-    ///         if event.matches(foo, TargetOp::Set, R, Wc) {
+    ///         if event.matches(foo, Op::Set, R, Wc) {
     ///             // ..
     ///         }
     ///
     ///         // foo Set something to something
-    ///         if event.matches(foo, TargetOp::Set, Wc, Wc) {
+    ///         if event.matches(foo, Op::Set, Wc, Wc) {
     ///             // ..
     ///         }
     ///
@@ -89,7 +92,7 @@ impl TargetEvent {
     pub fn matches(
         self,
         host: impl Into<Var<Entity>>,
-        target_op: impl Into<Var<TargetOp>>,
+        target_op: impl Into<Var<Op>>,
         rel_var: impl Into<Var<RelationId>>,
         target: impl Into<Var<Entity>>,
     ) -> bool {
@@ -103,5 +106,6 @@ impl TargetEvent {
 /// An event to notify when an entity was despawned as the resultof a cleanup policy.
 #[derive(Event)]
 pub struct CleanupEvent {
+    #[allow(missing_docs)]
     pub entity: Entity,
 }

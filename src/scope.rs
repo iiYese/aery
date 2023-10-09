@@ -1,199 +1,128 @@
 use crate::{
-    commands::{RelationCommands, Set},
-    relation::{Relation, ZstOrPanic},
+    edges::Set,
+    relation::{
+        Relation,
+        ZstOrPanic,
+        // TODO: bevy 0.12
+        // Hierarchy
+    },
 };
 
-use bevy::{
-    ecs::{entity::Entity, system::Command, world::EntityMut},
-    log::warn,
+use bevy::ecs::{
+    bundle::Bundle,
+    entity::Entity,
+    system::Command,
+    world::{EntityMut, World},
 };
 
 use std::marker::PhantomData;
 
-/// An extension API for `EntityMut<'_>` to make spawning and changing relation graphs easier.
-/// All functions will set relations if they do not exist including overwriting exclusive relations!
-/// Since changing relations can trigger cleanup procedures that might despawn the `Entity` referred
-/// to by `EntytMut<'_>` each method is consuming and returns an `Option<EntityMut<'_>>`.
-///
-/// For convenience `Scope<'_>` is also implemented for `Option<EntityMut<'_>>`. Where the methods
-/// are essentially their non-option equivalent wrapped in an implicit [`Option::and_then`] call
-/// that emits warnings when the option is `None`.
-pub trait Scope<'a>: Sized {
-    // DEV NOTE:
-    //
-    //  Will always return `Some` for Slef = `EntityMut` but not for Self = `Option<EntityMut<'_>>`
-    //  Can make generic programming slightly annoying to reflect this in the API so is left as is.
-    //
-    /// Spawns a host and gives mutable access to it via `EntityMut<'_>`.
-    /// Hierarchies are bottom up so the host is also the descendant.
-    fn scope<R: Relation>(self, func: impl FnMut(Entity, EntityMut<'_>)) -> Option<EntityMut<'a>>;
-
-    /// Spawns a target and gives mutable access to it via `EntityMut<'_>`.
-    /// Hierarchies are bottom up so the target is also the ancestor.
-    fn scope_target<R: Relation>(
-        self,
-        func: impl FnMut(Entity, EntityMut<'_>),
-    ) -> Option<EntityMut<'a>>;
-
-    /// Tries to scope an existing entity as a host. Gives mutable access via `EntityMut<'_>`.
-    /// A warning is emitted when the entity doesn't exist.
-    /// Hierarchies are bottom up so the host is also the descendant.
-    fn scope_entity<R: Relation>(
-        self,
-        entity: Entity,
-        func: impl FnMut(EntityMut<'_>),
-    ) -> Option<EntityMut<'a>>;
-
-    /// Tries to scope an existing entity as a target. Gives mutable access via `EntityMut<'_>`.
-    /// A warning is emitted when the entity doesn't exist.
-    /// Hierarchies are bottom up so the target is also the ancestor.
-    fn scope_target_entity<R: Relation>(
-        self,
-        entity: Entity,
-        func: impl FnMut(EntityMut<'_>),
-    ) -> Option<EntityMut<'a>>;
+/// TODO: Example + mermaid illustration
+/// Builder API to construct hierarchies of relations.
+pub struct Scope<'w, T> {
+    top: Entity,
+    last: Entity,
+    world: &'w mut World,
+    _phantom: PhantomData<T>,
 }
 
-impl<'a> Scope<'a> for EntityMut<'a> {
-    fn scope<R: Relation>(self, mut func: impl FnMut(Entity, EntityMut<'_>)) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let target = self.id();
-        let world = self.into_world_mut();
-        let host = world.spawn_empty();
-
-        if let Some(host) = host.set::<R>(target) {
-            func(target, host);
-        }
-
-        world.get_entity_mut(target)
+impl<R: Relation> Scope<'_, R> {
+    /// Spawn an entity from a bundle and have it target the currently scoped entity via.
+    pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.world.spawn(bundle).id();
+        Command::apply(Set::<R>::new(id, self.top), self.world);
+        self.last = id;
+        self
     }
 
-    fn scope_target<R: Relation>(
-        self,
-        mut func: impl FnMut(Entity, EntityMut<'_>),
-    ) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let host = self.id();
-        let world = self.into_world_mut();
-        let target = world.spawn_empty().id();
-
-        Command::apply(
-            Set::<R> {
-                host,
-                target,
-                _phantom: PhantomData,
-            },
-            world,
-        );
-
-        if let Some(target) = world.get_entity_mut(target) {
-            func(host, target);
-        }
-
-        world.get_entity_mut(host)
+    /// Spawn an entity from a bundle and set it as a target of the currently scoped entity.
+    pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.world.spawn(bundle).id();
+        Command::apply(Set::<R>::new(self.top, id), self.world);
+        self.last = id;
+        self
     }
 
-    fn scope_target_entity<R: Relation>(
-        self,
-        entity: Entity,
-        mut func: impl FnMut(EntityMut<'_>),
-    ) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
-
-        let host = self.id();
-        let world = self.into_world_mut();
-
-        Command::apply(
-            Set::<R> {
-                host,
-                target: entity,
-                _phantom: PhantomData,
-            },
-            world,
-        );
-
-        if let Some(target) = world.get_entity_mut(entity) {
-            func(target)
-        } else {
-            warn!(
-                "Tried to scope {:?} as a target which does not exist. Ignoring.",
-                entity
-            );
+    /// Spawn an entity and have it target the currently scoped entity via.
+    /// This function takes a closure to provide entity mut access.
+    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
+        let id = {
+            let mut spawned = self.world.spawn(());
+            func(&mut spawned);
+            spawned.id()
         };
 
-        world.get_entity_mut(host)
+        Command::apply(Set::<R>::new(id, self.top), self.world);
+        self.last = id;
+        self
     }
 
-    fn scope_entity<R: Relation>(
-        self,
-        entity: Entity,
-        mut func: impl FnMut(EntityMut<'_>),
-    ) -> Option<Self> {
-        let _ = R::ZST_OR_PANIC;
+    /// Spawn an entity and set it as a target of the currently scoped entity.
+    /// This function takes a closure to provide entity mut access.
+    pub fn add_target_and(
+        &mut self,
+        mut func: impl for<'e> FnMut(&mut EntityMut<'e>),
+    ) -> &mut Self {
+        let id = {
+            let mut spawned = self.world.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
 
-        let target = self.id();
-        let world = self.into_world_mut();
-
-        if let Some(host) = world
-            .get_entity_mut(entity)
-            .and_then(|host| host.set::<R>(target))
-        {
-            func(host);
-        } else {
-            warn!(
-                "Tried to scope {:?} as a host which does not exist. Ignoring.",
-                entity
-            );
-        }
-
-        world.get_entity_mut(target)
+        Command::apply(Set::<R>::new(self.top, id), self.world);
+        self.last = id;
+        self
     }
 }
 
-impl<'a> Scope<'a> for Option<EntityMut<'a>> {
-    fn scope_target<R: Relation>(self, func: impl FnMut(Entity, EntityMut<'_>)) -> Self {
-        match self {
-            Some(entity_mut) => entity_mut.scope_target::<R>(func),
-            None => {
-                warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
-                None
-            }
-        }
-    }
+impl<'a, T: Relation> Scope<'a, T> {
+    /// Scope the last spawned entity via `R`. Any targets or hosts that are added in the scope
+    /// implicitly use `R` as the edge.
+    pub fn scope<R: Relation>(
+        &mut self,
+        mut func: impl for<'i> FnMut(&mut Scope<'i, R>),
+    ) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
 
-    fn scope<R: Relation>(self, func: impl FnMut(Entity, EntityMut<'_>)) -> Self {
-        match self {
-            Some(entity_mut) => entity_mut.scope::<R>(func),
-            None => {
-                warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
-                None
-            }
-        }
-    }
+        let mut inner = Scope::<R> {
+            top: self.last,
+            last: self.last,
+            world: self.world,
+            _phantom: PhantomData,
+        };
 
-    fn scope_target_entity<R: Relation>(
-        self,
-        entity: Entity,
-        func: impl FnMut(EntityMut<'_>),
-    ) -> Self {
-        match self {
-            Some(entity_mut) => entity_mut.scope_target_entity::<R>(entity, func),
-            None => {
-                warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
-                None
-            }
-        }
-    }
+        func(&mut inner);
 
-    fn scope_entity<R: Relation>(self, entity: Entity, func: impl FnMut(EntityMut<'_>)) -> Self {
-        match self {
-            Some(entity_mut) => entity_mut.scope_entity::<R>(entity, func),
-            None => {
-                warn!("Tried to scope from an optional entity that doesn't exist. Ignoring.",);
-                None
-            }
-        }
+        self
+    }
+}
+
+// TODO: bevy 0.12
+// impl<'a> Scope<'a, Hierarchy> {}
+
+/// Ext trait to produce a [`Scope`] from an [`EntityMut`].
+pub trait EntityMutExt<'a> {
+    #[allow(missing_docs)]
+    fn scope<R: Relation>(&mut self, func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self;
+}
+
+impl<'a> EntityMutExt<'a> for EntityMut<'a> {
+    fn scope<R: Relation>(&mut self, mut func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
+        let id = self.id();
+
+        self.world_scope(|world| {
+            let mut scope = Scope {
+                top: id,
+                last: id,
+                world,
+                _phantom: PhantomData,
+            };
+
+            func(&mut scope);
+        });
+
+        self
     }
 }
