@@ -88,13 +88,30 @@ fn tick_food(
         food.tick(climate_map.climate_at(*pos));
     }
 
-    // Tick foods that are in a player's inventory based on the players position
+    // Tick foods that are in a character's inventory based on the players position
     for ((_, pos), edges) in characters.iter() {
         let climate = climate_map.climate_at(*pos);
         edges.join::<Inventory>(&mut inventory_food).for_each(|mut food| {
             food.tick(climate);
         });
     }
+}
+
+fn drop_item_from_inventory(
+    mut commands: Commands,
+    mut events: EventReader<TargetEvent>,
+    characters: Query<&Pos, With<Character>>,
+) {
+    // Set an items position to the position of the character that last had the item
+    // in their inventory when they drop it.
+    for event in events
+        .iter()
+        .filter(|event| event.matches(Wc, Op::Unset, Inventory, Wc))
+    {
+        let Ok(pos) = characters.get(event.target) else { return };
+        commands.entity(event.host).insert(*pos);
+    }
+
 }
 
 #[derive(Relation)]
