@@ -372,6 +372,7 @@ where
     }
 }
 
+#[cfg_attr(doc, aquamarine::aquamarine)]
 /// Join multiple queries together via edges.
 /// # Examples
 /// ### Simple join
@@ -475,10 +476,23 @@ where
 ///             // Prints:
 ///             // A(0), B(0), C(0)
 ///             // A(0), B(0), C(1)
-///             // A(1), B(1), C(3)
+///             // A(2), B(1), C(3)
 ///         });
 ///     }
 /// }
+/// ```
+/// ### Multiple join illustration:
+/// ```mermaid
+/// flowchart BT
+/// B0 --R0--> A0
+/// __ --R0--> A1
+/// B1 --R0--> A2
+/// B1 --R1--> A1
+/// C0 --R1--> A0
+/// C0 --R1--> A1
+/// C1 --R1--> A0
+/// C2
+/// C3 --R1--> A2
 /// ```
 pub trait Join<Item>
 where

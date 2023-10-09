@@ -91,7 +91,7 @@
 //!         food.tick(climate_map.climate_at(*pos));
 //!     }
 //!
-//!     // Tick foods that are in a character's inventory based on the players position
+//!     // Tick foods that are in a character's inventory based on the character's position
 //!     for ((_, pos), edges) in characters.iter() {
 //!         let climate = climate_map.climate_at(*pos);
 //!         edges.join::<Inventory>(&mut inventory_food).for_each(|mut food| {
