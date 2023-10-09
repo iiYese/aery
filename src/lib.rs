@@ -4,7 +4,7 @@
 #![allow(clippy::let_unit_value)]
 #![warn(missing_docs)]
 
-//! # Aery
+//! ## Aery
 //! A plugin that adds a subset of Entity Relationship features to Bevy.
 //!
 //! ### Currently supported:

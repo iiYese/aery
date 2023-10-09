@@ -1,6 +1,5 @@
 ## Aery
-A plugin that adds a subset of Entity Relationship features to Bevy using Non-fragmenting
-ZST relations.
+A plugin that adds a subset of Entity Relationship features to Bevy.
 
 [![Crates.io](https://img.shields.io/crates/v/aery)](https://crates.io/crates/aery)
 [![Docs.rs](https://img.shields.io/docsrs/aery)](https://docs.rs/aery/latest/aery/)
