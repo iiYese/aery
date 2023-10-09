@@ -19,37 +19,19 @@
 //! # API tour:
 //! Non exhaustive. Covers most common parts.
 //! ```
-//! // Modeling an item system where the enviornment can influence items.
+//! // Modeling RPG mechanics that resemble TOTK:
+//! // - Items interacting with enviornment climate
+//! // - Powering connected devices
 //! use bevy::prelude::*;
 //! use aery::prelude::*;
 //!
-//! fn main() {
-//!     App::new()
-//!         .add_plugins(Aery)
-//!         .add_systems(Startup, setup)
-//!         .add_systems(Update, (alert, sys))
-//!         .run();
-//! }
-//!
-//! #[derive(Relation)]
-//! struct Inventory;
+//! #[derive(Clone, Copy, Component)]
+//! struct Pos(Vec3);
 //!
 //! #[derive(Component)]
-//! struct Player;
+//! struct Character;
 //!
-//! #[derive(Component)]
-//! struct Freshness(f32);
-//!
-//! #[derive(Component)]
-//! struct Raw;
-//!
-//! #[derive(Component)]
-//! struct Cooked;
-//!
-//! #[derive(Component)]
-//! struct Potato;
-//!
-//! // Climate logic
+//! #[derive(Clone, Copy)]
 //! enum Climate {
 //!     Freezing,
 //!     Cold,
@@ -58,6 +40,101 @@
 //!     Blazing,
 //! }
 //!
+//! #[derive(Resource)]
+//! struct ClimateMap {
+//!     // ..
+//! }
+//!
+//! impl ClimateMap {
+//!     fn climate_at(&self, pos: Pos) -> Climate {
+//!         todo!()
+//!     }
+//! }
+//!
+//! #[derive(Component)]
+//! enum Food {
+//!     Raw { freshness: f32 },
+//!     Cooked,
+//!     Spoiled,
+//! }
+//!
+//! impl Food {
+//!     fn tick(&mut self, climate: Climate) {
+//!         let Food::Raw { freshness } = self else { return };
+//!
+//!         if *freshness < 0. {
+//!             *self = Food::Spoiled;
+//!             return
+//!         }
+//!
+//!         match climate {
+//!             Climate::Neutral => *freshness -= 1.,       // spoils over time
+//!             Climate::Cold => *freshness -= 0.1,         // spoils slowly
+//!             Climate::Freezing => *freshness -= 0.01,    // spoils very slowly
+//!             Climate::Hot => *freshness -= 5.,           // spoils quickly
+//!             Climate::Blazing => *self = Food::Cooked,   // Cooks food (should add a timer)
+//!         }
+//!     }
+//! }
+//!
+//! #[derive(Relation)]
+//! struct Inventory;
+//!
+//! fn tick_food(
+//!     mut characters: Query<((&Character, &Pos), Relations<Inventory>)>,
+//!     mut inventory_food: Query<&mut Food, Without<Pos>>,
+//!     mut food: Query<(&mut Food, &Pos)>,
+//!     climate_map: Res<ClimateMap>,
+//! ) {
+//!     // Tick foods that are just in the world somewhere
+//!     for (mut food, pos) in food.iter_mut() {
+//!         food.tick(climate_map.climate_at(*pos));
+//!     }
+//!
+//!     // Tick foods that are in a player's inventory based on the players position
+//!     for ((_, pos), edges) in characters.iter() {
+//!         let climate = climate_map.climate_at(*pos);
+//!         edges.join::<Inventory>(&mut inventory_food).for_each(|mut food| {
+//!             food.tick(climate);
+//!         });
+//!     }
+//! }
+//!
+//! #[derive(Relation)]
+//! #[aery(Symmetric)]
+//! struct FuseJoint;
+//!
+//! #[derive(Component)]
+//! struct Fan {
+//!     orientation: Quat
+//! }
+//!
+//! #[derive(Component)]
+//! struct Powered;
+//!
+//! fn tick_devices(
+//!     mut devices: Query<((Entity, &mut Pos), Relations<FuseJoint>)>,
+//!     mut fans: Query<(Entity, &Fan, &mut Pos), With<Powered>>,
+//! ) {
+//!     for (entity, fan, pos) in fans.iter_mut() {
+//!         // Move the fan based on its orientation
+//!         pos = todo!();
+//!
+//!         // Track visited nodes because this is a symmetric relationship
+//!         let mut updated = vec![entity];
+//!
+//!         devices.traverse_mut::<FuseJoint>([entity]).for_each(|(entity, ref mut pos), _| {
+//!             if updated.contains(&entity) {
+//!                 TCF::Close
+//!             } else {
+//!                 // Move connected device based on fan direction
+//!                 pos = todo!();
+//!                 updated.push(*entity);
+//!                 TCF::Continue
+//!             }
+//!         });
+//!     }
+//! }
 //! ```
 
 use bevy::{
