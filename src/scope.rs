@@ -8,11 +8,9 @@ use crate::{
     },
 };
 
-use bevy::ecs::{
-    bundle::Bundle,
-    entity::Entity,
-    system::Command,
-    world::{EntityMut, World},
+use bevy::{
+    ecs::{bundle::Bundle, entity::Entity, system::Command, world::World},
+    prelude::EntityWorldMut,
 };
 
 use std::marker::PhantomData;
@@ -45,7 +43,7 @@ impl<R: Relation> Scope<'_, R> {
 
     /// Spawn an entity and have it target the currently scoped entity via.
     /// This function takes a closure to provide entity mut access.
-    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
+    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityWorldMut<'e>)) -> &mut Self {
         let id = {
             let mut spawned = self.world.spawn(());
             func(&mut spawned);
@@ -61,7 +59,7 @@ impl<R: Relation> Scope<'_, R> {
     /// This function takes a closure to provide entity mut access.
     pub fn add_target_and(
         &mut self,
-        mut func: impl for<'e> FnMut(&mut EntityMut<'e>),
+        mut func: impl for<'e> FnMut(&mut EntityWorldMut<'e>),
     ) -> &mut Self {
         let id = {
             let mut spawned = self.world.spawn(());
@@ -106,7 +104,7 @@ pub trait EntityMutExt<'a> {
     fn scope<R: Relation>(&mut self, func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self;
 }
 
-impl<'a> EntityMutExt<'a> for EntityMut<'a> {
+impl<'a> EntityMutExt<'a> for EntityWorldMut<'a> {
     fn scope<R: Relation>(&mut self, mut func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 

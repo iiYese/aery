@@ -9,11 +9,11 @@ use bevy::{
         entity::Entity,
         query::{Or, With, Without, WorldQuery},
         system::{Command, CommandQueue, Resource},
-        world::{EntityMut, World},
+        world::World,
     },
     //hierarchy::{Children, Parent},
     log::warn,
-    prelude::{Deref, DerefMut},
+    prelude::{Deref, DerefMut, EntityWorldMut},
 };
 
 use smallvec::SmallVec;
@@ -662,7 +662,7 @@ pub trait RelationCommands {
 
 #[rustfmt::skip]
 #[allow(clippy::let_unit_value)]
-impl RelationCommands for EntityMut<'_> {
+impl RelationCommands for EntityWorldMut<'_> {
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 
