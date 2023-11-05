@@ -1,8 +1,6 @@
 use crate::Var;
 use core::any::TypeId;
 
-// TODO 0.12 impl for Hierarchy
-
 /// Type ID of a relation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RelationId(pub(crate) TypeId);
@@ -18,6 +16,12 @@ impl<R: Relation> From<R> for Var<RelationId> {
     fn from(_: R) -> Self {
         let _ = R::ZST_OR_PANIC;
         Self::Val(RelationId::of::<R>())
+    }
+}
+
+impl From<Hierarchy> for Var<RelationId> {
+    fn from(_: Hierarchy) -> Self {
+        Self::Val(RelationId(TypeId::of::<Hierarchy>()))
     }
 }
 
@@ -153,6 +157,37 @@ pub enum CleanupPolicy {
 /// for more information. This isn't necessarily good or bad. Archetype fragmentation is a more
 /// advanced topic but to keep it short and simple the archetype fragmentation is comparable to
 /// `bevy_hierarchy` if it supported multiple hierarchy types.
+/// ## Derive examples
+/// ```
+/// use aery::prelude::*;
+///
+/// // Simple derive with defaults:
+/// // - Orphaning
+/// // - Exclusive
+/// // - Asymmetric
+/// #[derive(Relation)]
+/// struct R;
+///
+/// // Override edge exclusivity
+/// #[derive(Relation)]
+/// #[aery(Poly)]
+/// struct Poly;
+///
+/// // Override edge symmetry
+/// #[derive(Relation)]
+/// #[aery(Symmetric)]
+/// struct Symmetric;
+///
+/// // Override cleanup policy
+/// #[derive(Relation)]
+/// #[aery(Recursive)] // Available: Counted, Recursive, Total
+/// struct Recursive;
+///
+/// // Override multiple properties
+/// #[derive(Relation)]
+/// #[aery(Poly, Symmetric, Counted)]
+/// struct Multi;
+/// ```
 pub trait Relation: 'static + Sized + Send + Sync {
     /// How to clean up entities and relations when an entity with a relation is despawned
     /// or when a relation is unset.
@@ -172,6 +207,38 @@ pub trait Relation: 'static + Sized + Send + Sync {
     const SYMMETRIC: bool = false;
 }
 
-// TODO: Enable for 0.12
-// For hierarchy compatibility
-//pub struct Hierarchy;
+/// For compatibility with bevy_hierarchy.
+/// **WARNING:**
+/// - Hierarchy cleanup does not clean aery relations.
+/// - Aery cleanup policies do not clean up hierarchy edges.
+/// ## Query example
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Component)]
+/// struct A {
+///     // ..
+/// }
+///
+/// #[derive(Component)]
+/// struct B {
+///     // ..
+/// }
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn sys(
+///     a_query: Query<&A>,
+///     b_query: Query<(&B, Relations<(Hierarchy, R)>)>, // Can use alone or along side relations
+///     roots: Query<Entity, (With<Children>, Without<Parent>)>
+/// ) {
+///     b_query.traverse::<Hierarchy>(roots.iter()).for_each(|b, edges| {
+///         edges.join::<R>(&a_query).for_each(|a| {
+///             // ..
+///         });
+///     })
+/// }
+/// ```
+pub struct Hierarchy;

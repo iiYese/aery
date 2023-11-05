@@ -1,12 +1,12 @@
 use crate::{
     edges::EdgeIter,
-    relation::{Relation, RelationId},
+    relation::{Hierarchy, Relation, RelationId},
     tuple_traits::*,
 };
 
 use bevy::ecs::{entity::Entity, query::WorldQuery};
 
-use std::marker::PhantomData;
+use std::{any::TypeId, marker::PhantomData};
 
 /// Struct to track metadat for a join operation.
 pub struct JoinWith<Relations, JoinEdges, JoinItems> {
@@ -93,6 +93,34 @@ pub trait EdgeSide {
         'i: 'r,
         RS: RelationSet,
         RelationsItem<'i, RS>: RelationEntries;
+}
+
+impl EdgeSide for Hierarchy {
+    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
+    where
+        'i: 'r,
+        RS: RelationSet,
+        RelationsItem<'i, RS>: RelationEntries,
+    {
+        relations
+            .hosts(RelationId(TypeId::of::<Hierarchy>()))
+            .iter()
+            .copied()
+    }
+}
+
+impl EdgeSide for Up<Hierarchy> {
+    fn entities<'i, 'r, RS>(relations: &'r RelationsItem<'i, RS>) -> EdgeIter<'r>
+    where
+        'i: 'r,
+        RS: RelationSet,
+        RelationsItem<'i, RS>: RelationEntries,
+    {
+        relations
+            .targets(RelationId(TypeId::of::<Hierarchy>()))
+            .iter()
+            .copied()
+    }
 }
 
 impl<R: Relation> EdgeSide for R {

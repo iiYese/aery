@@ -9,9 +9,9 @@ use bevy::{
         entity::Entity,
         query::{Or, With, Without, WorldQuery},
         system::{Command, CommandQueue, Resource},
-        world::{EntityMut, World},
+        world::{EntityWorldMut, World},
     },
-    //hierarchy::{Children, Parent},
+    hierarchy::{Children, Parent},
     log::warn,
     prelude::{Deref, DerefMut},
 };
@@ -86,6 +86,14 @@ impl<R: Relation> Default for Targets<R> {
 #[allow(missing_docs)]
 pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
+/// Edges world query for hierarchy compatibility
+#[derive(WorldQuery)]
+pub struct HierarchyEdges {
+    pub(crate) hosts: Option<&'static Children>,
+    pub(crate) target: Option<&'static Parent>,
+    pub(crate) _filter: Or<(With<Children>, With<Parent>)>,
+}
+
 /// World query to get the edge info of a Relation.
 #[derive(WorldQuery)]
 pub struct Edges<R: Relation> {
@@ -100,6 +108,22 @@ pub trait EdgeInfo {
     fn hosts(&self) -> &[Entity];
     /// Get all targets.
     fn targets(&self) -> &[Entity];
+}
+
+impl EdgeInfo for HierarchyEdgesItem<'_> {
+    fn hosts(&self) -> &[Entity] {
+        match self.hosts {
+            Some(hosts) => hosts,
+            None => &[],
+        }
+    }
+
+    fn targets(&self) -> &[Entity] {
+        match self.target {
+            Some(target) => target.as_slice(),
+            None => &[],
+        }
+    }
 }
 
 impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
@@ -134,9 +158,6 @@ impl<E: EdgeInfo> EdgeInfo for Option<E> {
         }
     }
 }
-
-// TODO: bevy 0.12
-// impl EdgeInfo for Hierarchy
 
 #[derive(Component, Default, Deref, DerefMut)]
 pub(crate) struct OnDelete {
@@ -646,7 +667,7 @@ impl<R: Relation> Command for Withdraw<R> {
     }
 }
 
-/// An extension API for [`EntityMut`] to sugar using relation commands.
+/// An extension API for [`EntityWorldMut`] to sugar using relation commands.
 pub trait RelationCommands {
     /// [`Set`] a relationship target.
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self;
@@ -662,7 +683,7 @@ pub trait RelationCommands {
 
 #[rustfmt::skip]
 #[allow(clippy::let_unit_value)]
-impl RelationCommands for EntityMut<'_> {
+impl RelationCommands for EntityWorldMut<'_> {
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 
