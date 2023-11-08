@@ -1,7 +1,7 @@
 use crate::{
-    edges::{EdgeInfo, Edges},
+    edges::{EdgeInfo, Edges, HierarchyEdges},
     operations::utils::{EdgeProduct, EdgeSide, RelationsItem},
-    relation::{Relation, RelationId},
+    relation::{Hierarchy, Relation, RelationId},
 };
 use core::any::TypeId;
 
@@ -18,6 +18,7 @@ mod sealed {
     use super::*;
     pub trait Sealed {}
 
+    impl Sealed for Hierarchy {}
     impl<R: Relation> Sealed for R {}
     impl<R: Relation> Sealed for Option<R> {}
 
@@ -83,6 +84,11 @@ pub trait RelationSet: Sized + Sealed {
     type Types: 'static;
 }
 
+impl RelationSet for Hierarchy {
+    type Edges = HierarchyEdges;
+    type Types = Hierarchy;
+}
+
 impl<R: Relation> RelationSet for R {
     type Edges = Edges<R>;
     type Types = R;
@@ -110,6 +116,24 @@ pub trait RelationEntries {
     fn hosts(&self, id: impl Into<RelationId>) -> &[Entity];
     /// Get all targets of a relation type.
     fn targets(&self, id: impl Into<RelationId>) -> &[Entity];
+}
+
+impl RelationEntries for RelationsItem<'_, Hierarchy> {
+    fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<Hierarchy>() == id.into().0 {
+            self.edges.hosts()
+        } else {
+            &[]
+        }
+    }
+
+    fn targets(&self, id: impl Into<RelationId>) -> &[Entity] {
+        if TypeId::of::<Hierarchy>() == id.into().0 {
+            self.edges.targets()
+        } else {
+            &[]
+        }
+    }
 }
 
 impl<R: Relation> RelationEntries for RelationsItem<'_, R> {

@@ -1,93 +1,93 @@
 use crate::{
     edges::Set,
-    relation::{
-        Relation,
-        ZstOrPanic,
-        // TODO: bevy 0.12
-        // Hierarchy
-    },
+    relation::{Relation, ZstOrPanic},
 };
 
 use bevy::ecs::{
     bundle::Bundle,
     entity::Entity,
-    system::Command,
-    world::{EntityMut, World},
+    system::{Command, Commands, EntityCommands},
+    world::{EntityWorldMut, World},
 };
 
 use std::marker::PhantomData;
 
-/// TODO: Example + mermaid illustration
 /// Builder API to construct hierarchies of relations.
-pub struct Scope<'w, T> {
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+/// 
+/// #[derive(Relation)]
+/// struct ChildOf;
+/// 
+/// #[derive(Component)]
+/// struct C<const N: usize>;
+/// 
+/// fn sys(mut cmds: Commands) {
+///     cmds.spawn(C::<0>)
+///         .scope::<ChildOf>(|scope| {
+///             // 1, 2, 3 are implicitly `ChildOf` the last spawned entity (0)
+///             scope.add(C::<1>)
+///                  .add(C::<2>)
+///                  .add(C::<3>)
+///                  .scope::<ChildOf>(|scope| {
+///                       // 4, 5 are implicitly `ChildOf` the last spawned entity (3)
+///                      scope.add(C::<4>)
+///                           .add(C::<5>);
+///                  });
+///         });
+/// }
+/// ```
+pub struct Scope<API, E> {
     top: Entity,
     last: Entity,
-    world: &'w mut World,
-    _phantom: PhantomData<T>,
+    api: API,
+    _phantom: PhantomData<E>,
 }
 
-impl<R: Relation> Scope<'_, R> {
-    /// Spawn an entity from a bundle and have it target the currently scoped entity via.
-    pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
-        let id = self.world.spawn(bundle).id();
-        Command::apply(Set::<R>::new(id, self.top), self.world);
-        self.last = id;
-        self
-    }
+/// Ext trait to produce a [`Scope`] from an [`EntityWorldMut`].
+pub trait AeryEntityWorldMutExt<'a> {
+    #[allow(missing_docs)]
+    fn scope<R: Relation>(&mut self, func: impl FnMut(&mut Scope<&'_ mut World, R>)) -> &mut Self;
+}
 
-    /// Spawn an entity from a bundle and set it as a target of the currently scoped entity.
-    pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
-        let id = self.world.spawn(bundle).id();
-        Command::apply(Set::<R>::new(self.top, id), self.world);
-        self.last = id;
-        self
-    }
-
-    /// Spawn an entity and have it target the currently scoped entity via.
-    /// This function takes a closure to provide entity mut access.
-    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityMut<'e>)) -> &mut Self {
-        let id = {
-            let mut spawned = self.world.spawn(());
-            func(&mut spawned);
-            spawned.id()
-        };
-
-        Command::apply(Set::<R>::new(id, self.top), self.world);
-        self.last = id;
-        self
-    }
-
-    /// Spawn an entity and set it as a target of the currently scoped entity.
-    /// This function takes a closure to provide entity mut access.
-    pub fn add_target_and(
+impl<'a> AeryEntityWorldMutExt<'a> for EntityWorldMut<'a> {
+    fn scope<R: Relation>(
         &mut self,
-        mut func: impl for<'e> FnMut(&mut EntityMut<'e>),
+        mut func: impl FnMut(&mut Scope<&'_ mut World, R>),
     ) -> &mut Self {
-        let id = {
-            let mut spawned = self.world.spawn(());
-            func(&mut spawned);
-            spawned.id()
-        };
+        let _ = R::ZST_OR_PANIC;
 
-        Command::apply(Set::<R>::new(self.top, id), self.world);
-        self.last = id;
+        let id = self.id();
+
+        self.world_scope(|world| {
+            let mut scope = Scope {
+                top: id,
+                last: id,
+                api: world,
+                _phantom: PhantomData,
+            };
+
+            func(&mut scope);
+        });
+
         self
     }
 }
 
-impl<'a, T: Relation> Scope<'a, T> {
+impl<T: Relation> Scope<&'_ mut World, T> {
     /// Scope the last spawned entity via `R`. Any targets or hosts that are added in the scope
     /// implicitly use `R` as the edge.
     pub fn scope<R: Relation>(
         &mut self,
-        mut func: impl for<'i> FnMut(&mut Scope<'i, R>),
+        mut func: impl FnMut(&mut Scope<&'_ mut World, R>),
     ) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 
-        let mut inner = Scope::<R> {
+        let mut inner = Scope::<&'_ mut World, R> {
             top: self.last,
             last: self.last,
-            world: self.world,
+            api: self.api,
             _phantom: PhantomData,
         };
 
@@ -97,32 +97,153 @@ impl<'a, T: Relation> Scope<'a, T> {
     }
 }
 
-// TODO: bevy 0.12
-// impl<'a> Scope<'a, Hierarchy> {}
+impl<R: Relation> Scope<&'_ mut World, R> {
+    /// Spawn an entity from a bundle and have it target the currently scoped entity via `R`.
+    pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.api.spawn(bundle).id();
+        Command::apply(Set::<R>::new(id, self.top), self.api);
+        self.last = id;
+        self
+    }
 
-/// Ext trait to produce a [`Scope`] from an [`EntityMut`].
-pub trait EntityMutExt<'a> {
-    #[allow(missing_docs)]
-    fn scope<R: Relation>(&mut self, func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self;
+    /// Spawn an entity from a bundle and set it as a target of the currently scoped entity.
+    pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.api.spawn(bundle).id();
+        Command::apply(Set::<R>::new(self.top, id), self.api);
+        self.last = id;
+        self
+    }
+
+    /// Spawn an entity and have it target the currently scoped entity via.
+    /// This function takes a closure to provide entity mut access.
+    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityWorldMut<'e>)) -> &mut Self {
+        let id = {
+            let mut spawned = self.api.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
+
+        Command::apply(Set::<R>::new(id, self.top), self.api);
+        self.last = id;
+        self
+    }
+
+    /// Spawn an entity and set it as a target of the currently scoped entity.
+    /// This function takes a closure to provide entity mut access.
+    pub fn add_target_and(
+        &mut self,
+        mut func: impl for<'e> FnMut(&mut EntityWorldMut<'e>),
+    ) -> &mut Self {
+        let id = {
+            let mut spawned = self.api.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
+
+        Command::apply(Set::<R>::new(self.top, id), self.api);
+        self.last = id;
+        self
+    }
 }
 
-impl<'a> EntityMutExt<'a> for EntityMut<'a> {
-    fn scope<R: Relation>(&mut self, mut func: impl for<'i> FnMut(&mut Scope<'i, R>)) -> &mut Self {
+/// Ext trait to produce a [`Scope`] from an [`EntityCommands`].
+pub trait AeryEntityCommandsExt<'w, 's, 'a> {
+    #[allow(missing_docs)]
+    fn scope<R: Relation>(
+        &mut self,
+        func: impl FnMut(&mut Scope<&'_ mut Commands, R>),
+    ) -> &mut Self;
+}
+
+impl<'w, 's, 'a> AeryEntityCommandsExt<'w, 's, 'a> for EntityCommands<'w, 's, 'a> {
+    fn scope<R: Relation>(
+        &mut self,
+        mut func: impl FnMut(&mut Scope<&'_ mut Commands, R>),
+    ) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
 
-        self.world_scope(|world| {
-            let mut scope = Scope {
-                top: id,
-                last: id,
-                world,
-                _phantom: PhantomData,
-            };
+        let mut scope = Scope {
+            top: id,
+            last: id,
+            api: self.commands(),
+            _phantom: PhantomData,
+        };
 
-            func(&mut scope);
-        });
+        func(&mut scope);
 
+        self
+    }
+}
+
+impl<T: Relation> Scope<&'_ mut Commands<'_, '_>, T> {
+    /// Scope the last spawned entity via `R`. Any targets or hosts that are added in the scope
+    /// implicitly use `R` as the edge.
+    pub fn scope<R: Relation>(
+        &mut self,
+        mut func: impl FnMut(&mut Scope<&'_ mut Commands<'_, '_>, R>),
+    ) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
+        let mut inner = Scope::<&'_ mut Commands<'_, '_>, R> {
+            top: self.last,
+            last: self.last,
+            api: self.api,
+            _phantom: PhantomData,
+        };
+
+        func(&mut inner);
+
+        self
+    }
+}
+
+impl<R: Relation> Scope<&'_ mut Commands<'_, '_>, R> {
+    /// Spawn an entity from a bundle and have it target the currently scoped entity via `R`.
+    pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.api.spawn(bundle).id();
+        self.api.add(Set::<R>::new(id, self.top));
+        self.last = id;
+        self
+    }
+
+    /// Spawn an entity from a bundle and set it as a target of the currently scoped entity.
+    pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
+        let id = self.api.spawn(bundle).id();
+        self.api.add(Set::<R>::new(self.top, id));
+        self.last = id;
+        self
+    }
+
+    /// Spawn an entity and have it target the currently scoped entity via.
+    /// This function takes a closure to provide entity mut access.
+    pub fn add_and(&mut self, mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>)) -> &mut Self {
+        let id = {
+            let mut spawned = self.api.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
+
+        self.api.add(Set::<R>::new(id, self.top));
+        self.last = id;
+        self
+    }
+
+    /// Spawn an entity and set it as a target of the currently scoped entity.
+    /// This function takes a closure to provide entity mut access.
+    pub fn add_target_and(
+        &mut self,
+        mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>),
+    ) -> &mut Self {
+        let id = {
+            let mut spawned = self.api.spawn(());
+            func(&mut spawned);
+            spawned.id()
+        };
+
+        self.api.add(Set::<R>::new(self.top, id));
+        self.last = id;
         self
     }
 }

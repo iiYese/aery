@@ -241,8 +241,8 @@ pub mod prelude {
             utils::{EdgeSide, Relations, Up},
             FoldBreadth, Join, Track, TrackSelf, Traverse,
         },
-        relation::{CleanupPolicy, Relation, ZstOrPanic},
-        scope::{EntityMutExt, Scope},
+        relation::{CleanupPolicy, Hierarchy, Relation, ZstOrPanic},
+        scope::{AeryEntityWorldMutExt, Scope, AeryEntityCommandsExt},
         tuple_traits::{Joinable, RelationSet},
     };
     #[doc(no_inline)]

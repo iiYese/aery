@@ -167,7 +167,7 @@ impl<Control, Edge, Starts> TrackSelf for TraverseAnd<Control, Edge, Starts> {
     }
 }
 
-/// Track the last seen from a query when traversing an edge. This is useful in scenarios
+/// Track the last seen item from a query when traversing an edge. This is useful in scenarios
 /// where you mightn't have a component on every entity in a hierarchy. For instance it might not
 /// make sense for a component to be on every entity or even an immediate ancestor meaning spam
 /// propogation isn't viable. Scroll areas in UI are one example of this.
