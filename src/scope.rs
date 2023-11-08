@@ -14,17 +14,29 @@ use std::marker::PhantomData;
 
 /// Builder API to construct hierarchies of relations.
 /// ```
-/// world.spawn(bundle).scope::<ChildOf>(|scope| {
-///     // x, y, z are implicitly `ChildOf` the last spawned entity
-///     scope.add(x)
-///          .add(y)
-///          .add(z)
-///          .scope::<ChildOf>(|scope| {
-///               // a, b are implicitly `ChildOf` the last spawned entity (z)
-///              scope.add(a)
-///                   .add(b);
-///          });
-/// });
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+/// 
+/// #[derive(Relation)]
+/// struct ChildOf;
+/// 
+/// #[derive(Component)]
+/// struct C<const N: usize>;
+/// 
+/// fn sys(mut cmds: Commands) {
+///     cmds.spawn(C::<0>)
+///         .scope::<ChildOf>(|scope| {
+///             // 1, 2, 3 are implicitly `ChildOf` the last spawned entity (0)
+///             scope.add(C::<1>)
+///                  .add(C::<2>)
+///                  .add(C::<3>)
+///                  .scope::<ChildOf>(|scope| {
+///                       // 4, 5 are implicitly `ChildOf` the last spawned entity (3)
+///                      scope.add(C::<4>)
+///                           .add(C::<5>);
+///                  });
+///         });
+/// }
 /// ```
 pub struct Scope<API, E> {
     top: Entity,
@@ -199,21 +211,21 @@ impl<R: Relation> Scope<&'_ mut Commands<'_, '_>, R> {
     /// Spawn an entity from a bundle and set it as a target of the currently scoped entity.
     pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
         let id = self.api.spawn(bundle).id();
-        Command::apply(Set::<R>::new(self.top, id), self.api);
+        self.api.add(Set::<R>::new(self.top, id));
         self.last = id;
         self
     }
 
     /// Spawn an entity and have it target the currently scoped entity via.
     /// This function takes a closure to provide entity mut access.
-    pub fn add_and(&mut self, mut func: impl for<'e> FnMut(&mut EntityWorldMut<'e>)) -> &mut Self {
+    pub fn add_and(&mut self, mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>)) -> &mut Self {
         let id = {
             let mut spawned = self.api.spawn(());
             func(&mut spawned);
             spawned.id()
         };
 
-        Command::apply(Set::<R>::new(id, self.top), self.api);
+        self.api.add(Set::<R>::new(id, self.top));
         self.last = id;
         self
     }
@@ -222,7 +234,7 @@ impl<R: Relation> Scope<&'_ mut Commands<'_, '_>, R> {
     /// This function takes a closure to provide entity mut access.
     pub fn add_target_and(
         &mut self,
-        mut func: impl for<'e> FnMut(&mut EntityWorldMut<'e>),
+        mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>),
     ) -> &mut Self {
         let id = {
             let mut spawned = self.api.spawn(());
@@ -230,7 +242,7 @@ impl<R: Relation> Scope<&'_ mut Commands<'_, '_>, R> {
             spawned.id()
         };
 
-        Command::apply(Set::<R>::new(self.top, id), self.api);
+        self.api.add(Set::<R>::new(self.top, id));
         self.last = id;
         self
     }

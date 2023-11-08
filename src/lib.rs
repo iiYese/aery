@@ -242,7 +242,7 @@ pub mod prelude {
             FoldBreadth, Join, Track, TrackSelf, Traverse,
         },
         relation::{CleanupPolicy, Hierarchy, Relation, ZstOrPanic},
-        scope::{AeryEntityWorldMutExt, Scope},
+        scope::{AeryEntityWorldMutExt, Scope, AeryEntityCommandsExt},
         tuple_traits::{Joinable, RelationSet},
     };
     #[doc(no_inline)]
