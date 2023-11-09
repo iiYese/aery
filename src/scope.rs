@@ -3,7 +3,7 @@ use crate::{
     relation::{Relation, ZstOrPanic},
 };
 
-use bevy::ecs::{
+use bevy_ecs::{
     bundle::Bundle,
     entity::Entity,
     system::{Command, Commands, EntityCommands},

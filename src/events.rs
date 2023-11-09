@@ -1,6 +1,6 @@
 use crate::{relation::RelationId, Var};
 
-use bevy::ecs::{entity::Entity, event::Event};
+use bevy_ecs::{entity::Entity, event::Event};
 use std::cmp::PartialEq;
 
 /// Operation type of a relation target event.

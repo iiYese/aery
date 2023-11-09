@@ -155,10 +155,8 @@
 //! }
 //! ```
 
-use bevy::{
-    app::{App, Plugin},
-    ecs::entity::Entity,
-};
+use bevy_app::{App, Plugin};
+use bevy_ecs::entity::Entity;
 
 ///
 pub mod edges;

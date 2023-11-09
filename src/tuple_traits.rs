@@ -5,14 +5,12 @@ use crate::{
 };
 use core::any::TypeId;
 
-use bevy::{
-    ecs::{
-        entity::Entity,
-        query::{ReadOnlyWorldQuery, WorldQuery},
-        system::Query,
-    },
-    utils::all_tuples,
+use bevy_ecs::{
+    entity::Entity,
+    query::{ReadOnlyWorldQuery, WorldQuery},
+    system::Query,
 };
+use bevy_utils::all_tuples;
 
 mod sealed {
     use super::*;

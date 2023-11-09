@@ -4,7 +4,7 @@ use crate::{
     tuple_traits::*,
 };
 
-use bevy::ecs::{entity::Entity, query::WorldQuery};
+use bevy_ecs::{entity::Entity, query::WorldQuery};
 
 use std::{any::TypeId, marker::PhantomData};
 

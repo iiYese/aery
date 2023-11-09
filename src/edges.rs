@@ -3,18 +3,16 @@ use crate::{
     relation::{CleanupPolicy, Relation, RelationId, ZstOrPanic},
 };
 
-use bevy::{
-    ecs::{
-        component::Component,
-        entity::Entity,
-        query::{Or, With, Without, WorldQuery},
-        system::{Command, CommandQueue, Resource},
-        world::{EntityWorldMut, World},
-    },
-    hierarchy::{Children, Parent},
-    log::warn,
-    prelude::{Deref, DerefMut},
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::{
+    component::Component,
+    entity::Entity,
+    query::{Or, With, Without, WorldQuery},
+    system::{Command, CommandQueue, Resource},
+    world::{EntityWorldMut, World},
 };
+use bevy_hierarchy::{Children, Parent};
+use bevy_log::warn;
 
 use smallvec::SmallVec;
 use std::marker::PhantomData;
@@ -758,7 +756,7 @@ mod tests {
     use super::Targets;
     use super::{Hosts, OnDelete};
     use crate::prelude::*;
-    use bevy::prelude::*;
+    use bevy_ecs::prelude::*;
     use std::array::from_fn;
 
     fn has_edges(world: &World, entity: Entity) -> bool {
