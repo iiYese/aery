@@ -1,6 +1,6 @@
 use crate::{relation::ZstOrPanic, tuple_traits::*};
 
-use bevy::ecs::{
+use bevy_ecs::{
     entity::Entity,
     query::{ReadOnlyWorldQuery, WorldQuery},
     system::Query,
@@ -547,7 +547,8 @@ where
 #[cfg(test)]
 mod tests {
     use crate::prelude::*;
-    use bevy::{app::AppExit, prelude::*};
+    use bevy_app::{prelude::*, AppExit};
+    use bevy_ecs::prelude::*;
 
     #[derive(Component)]
     struct S;

@@ -3,7 +3,7 @@ use crate::operations::utils::{
 };
 use crate::tuple_traits::*;
 
-use bevy::ecs::{
+use bevy_ecs::{
     entity::Entity,
     query::{ReadOnlyWorldQuery, WorldQuery},
     system::Query,
