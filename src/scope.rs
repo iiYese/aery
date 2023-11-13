@@ -16,13 +16,13 @@ use std::marker::PhantomData;
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
-/// 
+///
 /// #[derive(Relation)]
 /// struct ChildOf;
-/// 
+///
 /// #[derive(Component)]
 /// struct C<const N: usize>;
-/// 
+///
 /// fn sys(mut cmds: Commands) {
 ///     cmds.spawn(C::<0>)
 ///         .scope::<ChildOf>(|scope| {
@@ -218,7 +218,10 @@ impl<R: Relation> Scope<&'_ mut Commands<'_, '_>, R> {
 
     /// Spawn an entity and have it target the currently scoped entity via.
     /// This function takes a closure to provide entity mut access.
-    pub fn add_and(&mut self, mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>)) -> &mut Self {
+    pub fn add_and(
+        &mut self,
+        mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>),
+    ) -> &mut Self {
         let id = {
             let mut spawned = self.api.spawn(());
             func(&mut spawned);
