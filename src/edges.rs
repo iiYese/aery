@@ -7,7 +7,7 @@ use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
-    query::{Or, With, Without, WorldQuery},
+    query::{Changed, Or, With, Without, WorldQuery},
     system::{Command, CommandQueue, EntityCommands, Resource},
     world::{EntityWorldMut, World},
 };
@@ -191,6 +191,10 @@ pub struct Participates<R: Relation>(Or<(With<Hosts<R>>, With<Targets<R>>)>);
 /// Ie. have no edges comming in or out.
 #[derive(WorldQuery)]
 pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
+
+/// Filter to check entities that recently had a relation changed.
+#[derive(WorldQuery)]
+pub struct EdgeChanged<R: Relation>(Or<(Changed<Hosts<R>>, Changed<Targets<R>>)>);
 
 #[derive(Resource, Default, Deref, DerefMut)]
 struct AeryBuffer(CommandQueue);

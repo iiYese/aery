@@ -6,7 +6,7 @@ use crate::{
 
 use bevy_ecs::{entity::Entity, query::WorldQuery};
 
-use std::{any::TypeId, marker::PhantomData};
+use std::marker::PhantomData;
 
 /// Struct to track metadat for a join operation.
 pub struct JoinWith<Relations, JoinEdges, JoinItems> {
@@ -102,10 +102,7 @@ impl EdgeSide for Hierarchy {
         RS: RelationSet,
         RelationsItem<'i, RS>: RelationEntries,
     {
-        relations
-            .hosts(RelationId(TypeId::of::<Hierarchy>()))
-            .iter()
-            .copied()
+        relations.hosts(Hierarchy).iter().copied()
     }
 }
 
@@ -116,10 +113,7 @@ impl EdgeSide for Up<Hierarchy> {
         RS: RelationSet,
         RelationsItem<'i, RS>: RelationEntries,
     {
-        relations
-            .targets(RelationId(TypeId::of::<Hierarchy>()))
-            .iter()
-            .copied()
+        relations.targets(Hierarchy).iter().copied()
     }
 }
 
