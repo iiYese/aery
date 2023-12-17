@@ -1,6 +1,6 @@
 [package]
 name = "aery"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 authors = ["iiYese iiyese@outlook.com"]
 repository = "https://github.com/iiYese/aery"
