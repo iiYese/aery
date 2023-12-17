@@ -7,8 +7,8 @@ use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
-    query::{Or, With, Without, WorldQuery},
-    system::{Command, CommandQueue, Resource},
+    query::{Changed, Or, With, Without, WorldQuery},
+    system::{Command, CommandQueue, EntityCommands, Resource},
     world::{EntityWorldMut, World},
 };
 use bevy_hierarchy::{Children, Parent};
@@ -191,6 +191,10 @@ pub struct Participates<R: Relation>(Or<(With<Hosts<R>>, With<Targets<R>>)>);
 /// Ie. have no edges comming in or out.
 #[derive(WorldQuery)]
 pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
+
+/// Filter to check entities that recently had a relation changed.
+#[derive(WorldQuery)]
+pub struct EdgeChanged<R: Relation>(Or<(Changed<Hosts<R>>, Changed<Targets<R>>)>);
 
 #[derive(Resource, Default, Deref, DerefMut)]
 struct AeryBuffer(CommandQueue);
@@ -665,7 +669,7 @@ impl<R: Relation> Command for Withdraw<R> {
     }
 }
 
-/// An extension API for [`EntityWorldMut`] to sugar using relation commands.
+/// An extension API to sugar using relation commands.
 pub trait RelationCommands {
     /// [`Set`] a relationship target.
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self;
@@ -679,18 +683,13 @@ pub trait RelationCommands {
     fn checked_despawn(self);
 }
 
-#[rustfmt::skip]
-#[allow(clippy::let_unit_value)]
 impl RelationCommands for EntityWorldMut<'_> {
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
         self.world_scope(|world| {
-            Command::apply(
-                Set::<R>::new(id, target),
-                world,
-            );
+            Command::apply(Set::<R>::new(id, target), world);
         });
 
         self.update_location();
@@ -703,7 +702,11 @@ impl RelationCommands for EntityWorldMut<'_> {
         let id = self.id();
         self.world_scope(|world| {
             Command::apply(
-                Unset::<R> { host: id, target, _phantom: PhantomData },
+                Unset::<R> {
+                    host: id,
+                    target,
+                    _phantom: PhantomData,
+                },
                 world,
             );
         });
@@ -718,10 +721,12 @@ impl RelationCommands for EntityWorldMut<'_> {
         let id = self.id();
         self.world_scope(|world| {
             Command::apply(
-                UnsetAll::<R> { entity: id, _phantom: PhantomData },
+                UnsetAll::<R> {
+                    entity: id,
+                    _phantom: PhantomData,
+                },
                 world,
             );
-
         });
 
         self.update_location();
@@ -734,10 +739,12 @@ impl RelationCommands for EntityWorldMut<'_> {
         let id = self.id();
         self.world_scope(|world| {
             Command::apply(
-                Withdraw::<R> { entity: id, _phantom: PhantomData },
+                Withdraw::<R> {
+                    entity: id,
+                    _phantom: PhantomData,
+                },
                 world,
             );
-
         });
 
         self.update_location();
@@ -748,6 +755,55 @@ impl RelationCommands for EntityWorldMut<'_> {
         let id = self.id();
         let world = self.into_world_mut();
         Command::apply(CheckedDespawn(id), world);
+    }
+}
+
+impl RelationCommands for EntityCommands<'_, '_, '_> {
+    fn set<R: Relation>(&mut self, target: Entity) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
+        let id = self.id();
+        self.commands().add(Set::<R>::new(id, target));
+        self
+    }
+
+    fn unset<R: Relation>(&mut self, target: Entity) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
+        let id = self.id();
+        self.commands().add(Unset::<R> {
+            host: id,
+            target,
+            _phantom: PhantomData,
+        });
+        self
+    }
+
+    fn unset_all<R: Relation>(&mut self) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
+        let id = self.id();
+        self.commands().add(UnsetAll::<R> {
+            entity: id,
+            _phantom: PhantomData,
+        });
+        self
+    }
+
+    fn withdraw<R: Relation>(&mut self) -> &mut Self {
+        let _ = R::ZST_OR_PANIC;
+
+        let id = self.id();
+        self.commands().add(Withdraw::<R> {
+            entity: id,
+            _phantom: PhantomData,
+        });
+        self
+    }
+
+    fn checked_despawn(mut self) {
+        let id = self.id();
+        self.commands().add(CheckedDespawn(id));
     }
 }
 

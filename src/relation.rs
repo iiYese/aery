@@ -12,10 +12,23 @@ impl RelationId {
     }
 }
 
+impl<R: Relation> From<R> for RelationId {
+    fn from(_: R) -> Self {
+        let _ = R::ZST_OR_PANIC;
+        RelationId::of::<R>()
+    }
+}
+
 impl<R: Relation> From<R> for Var<RelationId> {
     fn from(_: R) -> Self {
         let _ = R::ZST_OR_PANIC;
         Self::Val(RelationId::of::<R>())
+    }
+}
+
+impl From<Hierarchy> for RelationId {
+    fn from(_: Hierarchy) -> Self {
+        RelationId(TypeId::of::<Hierarchy>())
     }
 }
 
