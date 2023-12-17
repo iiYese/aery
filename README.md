@@ -28,6 +28,15 @@ struct Pos(Vec3);
 #[derive(Component)]
 struct Character;
 
+#[derive(Component)]
+struct Weapon {
+    uses: u32,
+    strength: u32,
+}
+
+#[derive(Component)]
+struct Stick;
+
 #[derive(Clone, Copy)]
 enum Climate {
     Freezing,
@@ -74,8 +83,31 @@ impl Food {
     }
 }
 
+#[derive(Component)]
+struct Apple;
+
 #[derive(Relation)]
 struct Inventory;
+
+fn setup(mut cmds: Commands) {
+    // Spawn character with some starting items.
+    cmds.spawn((Character, Pos(Vec3::default())))
+        .scope::<Inventory>(|invt| {
+            // Give them a starting weapon & 3 food items
+            invt.add((Weapon { uses: 32, strength: 4 }, Stick))
+                .add((Food::Raw { freshness: 128. }, Apple))
+                .add((Food::Raw { freshness: 128. }, Apple))
+                .add((Food::Raw { freshness: 128. }, Apple));
+        });
+
+    // Alternatively construct relatiosn manually.
+    // This might be more appropriate for changing an inventory or making more complex graphs.
+    let char = cmds.spawn((Character, Pos(Vec3::default()))).id();
+    cmds.spawn((Weapon { uses: 32, strength: 4, }, Stick)).set::<Inventory>(char);
+    cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
+    cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
+    cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
+}
 
 fn tick_food(
     mut characters: Query<((&Character, &Pos), Relations<Inventory>)>,
@@ -101,6 +133,7 @@ fn drop_item_from_inventory(
     mut commands: Commands,
     mut events: EventReader<TargetEvent>,
     characters: Query<&Pos, With<Character>>,
+    food: Query<Entity, With<Food>>,
 ) {
     // Set an items position to the position of the character that last had the item
     // in their inventory when they drop it.
@@ -115,7 +148,7 @@ fn drop_item_from_inventory(
 }
 
 #[derive(Relation)]
-#[aery(Symmetric)]
+#[aery(Symmetric, Poly)]
 struct FuseJoint;
 
 #[derive(Component)]
