@@ -56,8 +56,6 @@ fn input(
         return;
     };
 
-    println!("pos: {}", cursor_pos);
-
     if let Some((e, _)) = nodes
         .iter()
         .find(|(_, Pos(pos))| (cursor_pos - *pos).length() < 40.)
