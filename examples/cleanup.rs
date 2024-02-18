@@ -42,7 +42,7 @@ fn draw(mut painter: ShapePainter, tree: Query<&Pos>) {
 
 fn input(
     mut cmds: Commands,
-    mouse_buttons: Res<Input<MouseButton>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     nodes: Query<(Entity, &Pos)>,
 ) {

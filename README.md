@@ -187,6 +187,7 @@ fn tick_devices(
 ### Version table
 | Bevy version | Aery verison |
 |--------------|--------------|
+| 0.13         | 0.6          |
 | 0.12         | 0.5          |
 | 0.11         | 0.3 - 0.4    |
 | 0.10         | 0.1 - 0.2    |

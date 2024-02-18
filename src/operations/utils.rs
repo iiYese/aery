@@ -4,7 +4,7 @@ use crate::{
     tuple_traits::*,
 };
 
-use bevy_ecs::{entity::Entity, query::WorldQuery};
+use bevy_ecs::{entity::Entity, query::QueryData};
 
 use std::marker::PhantomData;
 
@@ -33,7 +33,7 @@ pub struct TraverseAnd<Control, Edge, Starts, Tracked = (), Init = (), Fold = ()
 /// to use relation operations and no type may appear more than once for operations to work.*
 ///
 /// [`RelationSet`]: crate::tuple_traits::RelationSet
-#[derive(WorldQuery)]
+#[derive(QueryData)]
 pub struct Relations<RS: RelationSet> {
     pub(crate) edges: RS::Edges,
     _phantom: PhantomData<RS>,

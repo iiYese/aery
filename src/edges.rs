@@ -7,7 +7,7 @@ use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
-    query::{Changed, Or, With, Without, WorldQuery},
+    query::{AnyOf, Changed, NopWorldQuery, Or, QueryData, QueryFilter, With, Without},
     system::{Command, CommandQueue, EntityCommands, Resource},
     world::{EntityWorldMut, World},
 };
@@ -85,19 +85,19 @@ impl<R: Relation> Default for Targets<R> {
 pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
 /// Edges world query for hierarchy compatibility
-#[derive(WorldQuery)]
+#[derive(QueryData)]
 pub struct HierarchyEdges {
     pub(crate) hosts: Option<&'static Children>,
     pub(crate) target: Option<&'static Parent>,
-    pub(crate) _filter: Or<(With<Children>, With<Parent>)>,
+    pub(crate) _filter: NopWorldQuery<AnyOf<(&'static Children, &'static Parent)>>,
 }
 
 /// World query to get the edge info of a Relation.
-#[derive(WorldQuery)]
+#[derive(QueryData)]
 pub struct Edges<R: Relation> {
     pub(crate) hosts: Option<&'static Hosts<R>>,
     pub(crate) targets: Option<&'static Targets<R>>,
-    pub(crate) _filter: Or<(With<Hosts<R>>, With<Targets<R>>)>,
+    pub(crate) _filter: NopWorldQuery<AnyOf<(&'static Hosts<R>, &'static Targets<R>)>>,
 }
 
 /// Get information from a single edge bucket.
@@ -167,33 +167,33 @@ pub(crate) struct OnDelete {
 /// An entity is a root of `R` if:
 /// - It is targeted by atleast one other entity via `R`.
 /// - It does not target any other entity via `R`.
-#[derive(WorldQuery)]
+#[derive(QueryFilter)]
 pub struct Root<R: Relation>((With<Hosts<R>>, Without<Targets<R>>));
 
 /// Filter to find branches of a relationship graph.
 /// A branch of `R` has **both** hosts and targets.
-#[derive(WorldQuery)]
+#[derive(QueryFilter)]
 pub struct Branch<R: Relation>((With<Hosts<R>>, With<Targets<R>>));
 
 /// Filter to find leaves of a relationship graph.
 /// An entity is a leaf of `R` if:
 /// - It targets atleast 1 other entity via `R`.
 /// - It is not targeted by any other entity via `R`.
-#[derive(WorldQuery)]
+#[derive(QueryFilter)]
 pub struct Leaf<R: Relation>((Without<Hosts<R>>, With<Targets<R>>));
 
 /// Filter to find participants of a relationship.
 /// A participant of `R` has **either** hosts or targets.
-#[derive(WorldQuery)]
+#[derive(QueryFilter)]
 pub struct Participates<R: Relation>(Or<(With<Hosts<R>>, With<Targets<R>>)>);
 
 /// Filter to find entities that do not participante in a relationship.
 /// Ie. have no edges comming in or out.
-#[derive(WorldQuery)]
+#[derive(QueryFilter)]
 pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
 
 /// Filter to check entities that recently had a relation changed.
-#[derive(WorldQuery)]
+#[derive(QueryFilter)]
 pub struct EdgeChanged<R: Relation>(Or<(Changed<Hosts<R>>, Changed<Targets<R>>)>);
 
 #[derive(Resource, Default, Deref, DerefMut)]
@@ -758,7 +758,7 @@ impl RelationCommands for EntityWorldMut<'_> {
     }
 }
 
-impl RelationCommands for EntityCommands<'_, '_, '_> {
+impl RelationCommands for EntityCommands<'_> {
     fn set<R: Relation>(&mut self, target: Entity) -> &mut Self {
         let _ = R::ZST_OR_PANIC;
 

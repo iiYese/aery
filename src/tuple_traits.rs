@@ -7,7 +7,7 @@ use core::any::TypeId;
 
 use bevy_ecs::{
     entity::Entity,
-    query::{ReadOnlyWorldQuery, WorldQuery},
+    query::{QueryData, QueryFilter, ReadOnlyQueryData, WorldQuery},
     system::Query,
 };
 use bevy_utils::all_tuples;
@@ -20,17 +20,17 @@ mod sealed {
     impl<R: Relation> Sealed for R {}
     impl<R: Relation> Sealed for Option<R> {}
 
-    impl<Q, F> Sealed for &'_ Query<'_, '_, Q, F>
+    impl<D, F> Sealed for &'_ Query<'_, '_, D, F>
     where
-        Q: WorldQuery,
-        F: ReadOnlyWorldQuery,
+        D: QueryData,
+        F: QueryFilter,
     {
     }
 
-    impl<Q, F> Sealed for &'_ mut Query<'_, '_, Q, F>
+    impl<D, F> Sealed for &'_ mut Query<'_, '_, D, F>
     where
-        Q: WorldQuery,
-        F: ReadOnlyWorldQuery,
+        D: QueryData,
+        F: QueryFilter,
     {
     }
 
@@ -78,7 +78,7 @@ all_tuples!(impl_append, 1, 15, P, p);
 
 #[doc(hidden)]
 pub trait RelationSet: Sized + Sealed {
-    type Edges: ReadOnlyWorldQuery;
+    type Edges: ReadOnlyQueryData;
     type Types: 'static;
 }
 
@@ -174,7 +174,7 @@ macro_rules! impl_relation_entries {
     ($(($P:ident, $e:ident)),*) => {
         impl<$($P: RelationSet),*> RelationEntries for RelationsItem<'_, ($($P,)*)>
         where
-            $(for<'a> <<$P::Edges as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>: EdgeInfo,)*
+            $(for<'a> <$P::Edges as WorldQuery>::Item<'a>: EdgeInfo,)*
         {
             fn hosts(&self, id: impl Into<RelationId>) -> &[Entity] {
                 let id = id.into();
@@ -237,12 +237,12 @@ pub trait Joinable<'a, const N: usize>: Sealed {
     fn join(items: &'a mut Self, entities: [Entity; N]) -> Self::Out;
 }
 
-impl<'a, Q, F> Joinable<'a, 1> for &'_ Query<'_, '_, Q, F>
+impl<'a, D, F> Joinable<'a, 1> for &'_ Query<'_, '_, D, F>
 where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
 {
-    type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
+    type Out = <D::ReadOnly as WorldQuery>::Item<'a>;
 
     fn check(items: &Self, [e0]: [Entity; 1]) -> [bool; 1] {
         [items.contains(e0)]
@@ -253,12 +253,12 @@ where
     }
 }
 
-impl<'a, Q, F> Joinable<'a, 1> for &'_ mut Query<'_, '_, Q, F>
+impl<'a, D, F> Joinable<'a, 1> for &'_ mut Query<'_, '_, D, F>
 where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
 {
-    type Out = <Q as WorldQuery>::Item<'a>;
+    type Out = <D as WorldQuery>::Item<'a>;
 
     fn check(items: &Self, [e0]: [Entity; 1]) -> [bool; 1] {
         [items.contains(e0)]
@@ -324,12 +324,12 @@ pub trait Trackable<'a, const N: usize>: Sealed {
     fn retrieve(items: &'a mut Self, entities: [Entity; N]) -> Option<Self::Out>;
 }
 
-impl<'a, Q, F> Trackable<'a, 1> for &'_ Query<'_, '_, Q, F>
+impl<'a, D, F> Trackable<'a, 1> for &'_ Query<'_, '_, D, F>
 where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
 {
-    type Out = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>;
+    type Out = <D::ReadOnly as WorldQuery>::Item<'a>;
 
     fn update(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
         [if items.contains(entity) {
@@ -344,12 +344,12 @@ where
     }
 }
 
-impl<'a, Q, F> Trackable<'a, 1> for &'_ mut Query<'_, '_, Q, F>
+impl<'a, D, F> Trackable<'a, 1> for &'_ mut Query<'_, '_, D, F>
 where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
 {
-    type Out = <Q as WorldQuery>::Item<'a>;
+    type Out = <D as WorldQuery>::Item<'a>;
 
     fn update(items: &Self, entity: Entity, [fallback]: [Entity; 1]) -> [Entity; 1] {
         [if items.contains(entity) {

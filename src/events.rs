@@ -50,7 +50,7 @@ impl TargetEvent {
     ///     let (foo, _) = a.single();
     ///     let (bar, _) = b.single();
     ///
-    ///     for event in events.iter() {
+    ///     for event in events.read() {
     ///         // Anything Set anything to anything else
     ///         if event.matches(Wc, Op::Set, Wc, Wc) {
     ///             if let Ok(a) = a.get(event.host) {

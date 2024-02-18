@@ -177,7 +177,7 @@ pub struct CommandScope<'a, 'w, 's, E> {
 }
 
 /// Ext trait to produce a [`CommandScope`] from an [`EntityCommands`].
-pub trait AeryEntityCommandsExt<'w, 's, 'a> {
+pub trait AeryEntityCommandsExt<'a> {
     #[allow(missing_docs)]
     fn scope<R: Relation>(
         &mut self,
@@ -185,7 +185,7 @@ pub trait AeryEntityCommandsExt<'w, 's, 'a> {
     ) -> &mut Self;
 }
 
-impl<'w, 's, 'a> AeryEntityCommandsExt<'w, 's, 'a> for EntityCommands<'w, 's, 'a> {
+impl<'a> AeryEntityCommandsExt<'a> for EntityCommands<'a> {
     fn scope<R: Relation>(
         &mut self,
         mut func: impl FnMut(&mut CommandScope<'_, '_, '_, R>),
@@ -197,7 +197,7 @@ impl<'w, 's, 'a> AeryEntityCommandsExt<'w, 's, 'a> for EntityCommands<'w, 's, 'a
         let mut scope = CommandScope {
             top: id,
             last: id,
-            cmds: self.commands(),
+            cmds: &mut self.commands(),
             _phantom: PhantomData,
         };
 
@@ -248,10 +248,7 @@ impl<R: Relation> CommandScope<'_, '_, '_, R> {
 
     /// Spawn an entity and have it target the currently scoped entity via.
     /// This function takes a closure to provide entity mut access.
-    pub fn add_and(
-        &mut self,
-        mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>),
-    ) -> &mut Self {
+    pub fn add_and(&mut self, mut func: impl for<'a> FnMut(&mut EntityCommands<'a>)) -> &mut Self {
         let id = {
             let mut spawned = self.cmds.spawn(());
             func(&mut spawned);
@@ -267,7 +264,7 @@ impl<R: Relation> CommandScope<'_, '_, '_, R> {
     /// This function takes a closure to provide entity mut access.
     pub fn add_target_and(
         &mut self,
-        mut func: impl for<'w, 's, 'e> FnMut(&mut EntityCommands<'w, 's, 'e>),
+        mut func: impl for<'a> FnMut(&mut EntityCommands<'a>),
     ) -> &mut Self {
         let id = {
             let mut spawned = self.cmds.spawn(());

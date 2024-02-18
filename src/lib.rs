@@ -141,7 +141,7 @@
 //!     // Set an items position to the position of the character that last had the item
 //!     // in their inventory when they drop it.
 //!     for event in events
-//!         .iter()
+//!         .read()
 //!         .filter(|event| event.matches(Wc, Op::Unset, Inventory, Wc))
 //!     {
 //!         let Ok(pos) = characters.get(event.target) else { return };

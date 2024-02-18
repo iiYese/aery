@@ -5,7 +5,7 @@ use crate::tuple_traits::*;
 
 use bevy_ecs::{
     entity::Entity,
-    query::{ReadOnlyWorldQuery, WorldQuery},
+    query::{QueryData, QueryFilter, WorldQuery},
     system::Query,
 };
 
@@ -282,18 +282,18 @@ pub trait TraversalForEach<RS: RelationSet> {
         Func: for<'a> FnMut(&mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret;
 }
 
-impl<Q, RS, F, Edge, E, Starts> TraversalForEach<RS>
-    for TraverseAnd<&'_ Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts>
+impl<D, RS, F, Edge, E, Starts> TraversalForEach<RS>
+    for TraverseAnd<&'_ Query<'_, '_, (D, Relations<RS>), F>, Edge, Starts>
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
-    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D::ReadOnly as WorldQuery>::Item<'wq>;
 
     fn for_each<Func, Ret>(self, mut func: Func)
     where
@@ -327,18 +327,18 @@ where
     }
 }
 
-impl<Q, RS, F, Edge, E, Starts> TraversalForEach<RS>
-    for TraverseAnd<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts>
+impl<D, RS, F, Edge, E, Starts> TraversalForEach<RS>
+    for TraverseAnd<&'_ mut Query<'_, '_, (D, Relations<RS>), F>, Edge, Starts>
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
-    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D as WorldQuery>::Item<'wq>;
 
     fn for_each<Func, Ret>(self, mut func: Func)
     where
@@ -388,19 +388,19 @@ pub trait RemoteTrackingTraversalForEach<RS: RelationSet, const N: usize> {
             for<'t, 'a> FnMut(Self::Tracked<'t>, &mut Self::WQ<'a>, &RelationsItem<'a, RS>) -> Ret;
 }
 
-impl<Q, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteTrackingTraversalForEach<RS, N>
-    for TraverseAnd<&'_ Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, Tracked>
+impl<D, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteTrackingTraversalForEach<RS, N>
+    for TraverseAnd<&'_ Query<'_, '_, (D, Relations<RS>), F>, Edge, Starts, Tracked>
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
     Tracked: for<'a> Trackable<'a, N>,
 {
-    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D::ReadOnly as WorldQuery>::Item<'wq>;
     type Tracked<'t> = <Tracked as Trackable<'t, N>>::Out;
 
     fn for_each<Func, Ret>(mut self, mut func: Func)
@@ -441,19 +441,19 @@ where
     }
 }
 
-impl<Q, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteTrackingTraversalForEach<RS, N>
-    for TraverseAnd<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, Tracked>
+impl<D, RS, F, Edge, E, Starts, Tracked, const N: usize> RemoteTrackingTraversalForEach<RS, N>
+    for TraverseAnd<&'_ mut Query<'_, '_, (D, Relations<RS>), F>, Edge, Starts, Tracked>
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
     Tracked: for<'a> Trackable<'a, N>,
 {
-    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D as WorldQuery>::Item<'wq>;
     type Tracked<'t> = <Tracked as Trackable<'t, N>>::Out;
 
     fn for_each<Func, Ret>(mut self, mut func: Func)
@@ -513,18 +513,18 @@ pub trait SelfTrackingTraversalForEach<RS: RelationSet> {
         ) -> Ret;
 }
 
-impl<Q, RS, F, Edge, E, Starts> SelfTrackingTraversalForEach<RS>
-    for TraverseAnd<&'_ Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
+impl<D, RS, F, Edge, E, Starts> SelfTrackingTraversalForEach<RS>
+    for TraverseAnd<&'_ Query<'_, '_, (D, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
-    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D::ReadOnly as WorldQuery>::Item<'wq>;
 
     fn for_each<Func, Ret>(self, mut func: Func)
     where
@@ -571,18 +571,18 @@ where
     }
 }
 
-impl<Q, RS, F, Edge, E, Starts> SelfTrackingTraversalForEach<RS>
-    for TraverseAnd<&'_ mut Query<'_, '_, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
+impl<D, RS, F, Edge, E, Starts> SelfTrackingTraversalForEach<RS>
+    for TraverseAnd<&'_ mut Query<'_, '_, (D, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
 {
-    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D as WorldQuery>::Item<'wq>;
 
     fn for_each<Func, Ret>(self, mut func: Func)
     where
@@ -655,9 +655,9 @@ pub trait FoldingSelfTrackingTraversalForEach<RS: RelationSet> {
         ) -> Ret;
 }
 
-impl<Q, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTraversalForEach<RS>
+impl<D, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTraversalForEach<RS>
     for TraverseAnd<
-        &'_ Query<'_, '_, (Q, Relations<RS>), F>,
+        &'_ Query<'_, '_, (D, Relations<RS>), F>,
         Edge,
         Starts,
         SelfTracking,
@@ -665,24 +665,21 @@ impl<Q, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTravers
         Fold,
     >
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
-    Init: for<'a> FnMut(
-        &mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>,
-        &RelationsItem<'a, RS>,
-    ) -> Acc,
+    Init: for<'a> FnMut(&mut <D::ReadOnly as WorldQuery>::Item<'a>, &RelationsItem<'a, RS>) -> Acc,
     Fold: for<'a> FnMut(
         Acc,
-        &mut <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'a>,
+        &mut <D::ReadOnly as WorldQuery>::Item<'a>,
         &RelationsItem<'a, RS>,
     ) -> Result<Acc, Err>,
 {
-    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D::ReadOnly as WorldQuery>::Item<'wq>;
     type Res = Result<Acc, Err>;
 
     fn for_each<Func, Ret>(mut self, mut func: Func)
@@ -753,9 +750,9 @@ where
     }
 }
 
-impl<Q, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTraversalForEach<RS>
+impl<D, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTraversalForEach<RS>
     for TraverseAnd<
-        &'_ mut Query<'_, '_, (Q, Relations<RS>), F>,
+        &'_ mut Query<'_, '_, (D, Relations<RS>), F>,
         Edge,
         Starts,
         SelfTracking,
@@ -763,21 +760,21 @@ impl<Q, RS, F, Edge, E, Starts, Init, Fold, Acc, Err> FoldingSelfTrackingTravers
         Fold,
     >
 where
-    Q: WorldQuery,
+    D: QueryData,
     RS: RelationSet,
-    F: ReadOnlyWorldQuery,
+    F: QueryFilter,
     Edge: EdgeSide,
     E: Borrow<Entity>,
     Starts: IntoIterator<Item = E>,
     for<'i> RelationsItem<'i, RS>: RelationEntries,
-    Init: for<'a> FnMut(&mut <Q as WorldQuery>::Item<'a>, &RelationsItem<'a, RS>) -> Acc,
+    Init: for<'a> FnMut(&mut <D as WorldQuery>::Item<'a>, &RelationsItem<'a, RS>) -> Acc,
     Fold: for<'a> FnMut(
         Acc,
-        &mut <Q as WorldQuery>::Item<'a>,
+        &mut <D as WorldQuery>::Item<'a>,
         &RelationsItem<'a, RS>,
     ) -> Result<Acc, Err>,
 {
-    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D as WorldQuery>::Item<'wq>;
     type Res = Result<Acc, Err>;
 
     fn for_each<Func, Ret>(mut self, mut func: Func)

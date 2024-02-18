@@ -2,7 +2,7 @@ use crate::{relation::ZstOrPanic, tuple_traits::*};
 
 use bevy_ecs::{
     entity::Entity,
-    query::{ReadOnlyWorldQuery, WorldQuery},
+    query::{QueryData, QueryFilter, WorldQuery},
     system::Query,
 };
 
@@ -79,12 +79,12 @@ where
     fn traverse_mut<Edge: EdgeSide>(&mut self, starts: I) -> TraverseAnd<&'_ mut Self, Edge, I>;
 }
 
-impl<E, I, Q, RS, F> Traverse<E, I> for Query<'_, '_, (Q, Relations<RS>), F>
+impl<E, I, D, RS, F> Traverse<E, I> for Query<'_, '_, (D, Relations<RS>), F>
 where
     E: Borrow<Entity>,
     I: IntoIterator<Item = E>,
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
     RS: RelationSet,
 {
     fn traverse<Edge: EdgeSide>(&self, starts: I) -> TraverseAnd<&'_ Self, Edge, I> {
@@ -306,16 +306,16 @@ pub trait FoldBreadth<RS: RelationSet> {
         Fold: FnMut(Acc, &mut Self::WQ<'_>, &RelationsItem<RS>) -> Result<Acc, E>;
 }
 
-impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth<RS>
-    for TraverseAnd<&'a Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
+impl<'a, 'w, 's, D, RS, F, Edge, Starts> FoldBreadth<RS>
+    for TraverseAnd<&'a Query<'w, 's, (D, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
     RS: RelationSet,
 {
-    type WQ<'wq> = <<Q as WorldQuery>::ReadOnly as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D::ReadOnly as WorldQuery>::Item<'wq>;
     type Out<Init, Fold> = TraverseAnd<
-        &'a Query<'w, 's, (Q, Relations<RS>), F>,
+        &'a Query<'w, 's, (D, Relations<RS>), F>,
         Edge,
         Starts,
         SelfTracking,
@@ -339,16 +339,16 @@ where
     }
 }
 
-impl<'a, 'w, 's, Q, RS, F, Edge, Starts> FoldBreadth<RS>
-    for TraverseAnd<&'a mut Query<'w, 's, (Q, Relations<RS>), F>, Edge, Starts, SelfTracking>
+impl<'a, 'w, 's, D, RS, F, Edge, Starts> FoldBreadth<RS>
+    for TraverseAnd<&'a mut Query<'w, 's, (D, Relations<RS>), F>, Edge, Starts, SelfTracking>
 where
-    Q: WorldQuery,
-    F: ReadOnlyWorldQuery,
+    D: QueryData,
+    F: QueryFilter,
     RS: RelationSet,
 {
-    type WQ<'wq> = <Q as WorldQuery>::Item<'wq>;
+    type WQ<'wq> = <D as WorldQuery>::Item<'wq>;
     type Out<Init, Fold> = TraverseAnd<
-        &'a mut Query<'w, 's, (Q, Relations<RS>), F>,
+        &'a mut Query<'w, 's, (D, Relations<RS>), F>,
         Edge,
         Starts,
         SelfTracking,
