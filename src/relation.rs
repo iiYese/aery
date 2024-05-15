@@ -99,7 +99,7 @@ impl<T> ZstOrPanic for T {}
 ///# use bevy::app::AppExit;
 ///#
 ///# fn exit_system(mut exit: EventWriter<AppExit>) {
-///#     exit.send(AppExit);
+///#     exit.send(AppExit::Success);
 ///# }
 ///#
 ///# fn main() {

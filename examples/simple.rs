@@ -33,7 +33,7 @@ fn display_children(tree: Query<(&Name, Relations<ChildOf>)>, roots: Query<Entit
 }
 
 fn exit(mut exit: EventWriter<AppExit>) {
-    exit.send(AppExit);
+    exit.send(AppExit::Success);
 }
 
 fn main() {

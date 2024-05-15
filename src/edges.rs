@@ -7,8 +7,9 @@ use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
-    query::{AnyOf, Changed, NopWorldQuery, Or, QueryData, QueryFilter, With, Without},
-    system::{Command, CommandQueue, EntityCommands, Resource},
+    query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
+    system::{EntityCommands, Resource},
+    world::{Command, CommandQueue},
     world::{EntityWorldMut, World},
 };
 use bevy_hierarchy::{Children, Parent};
@@ -86,19 +87,11 @@ pub type EdgeIter<'a> = std::iter::Copied<std::slice::Iter<'a, Entity>>;
 
 /// Edges world query for hierarchy compatibility
 #[derive(QueryData)]
-pub struct HierarchyEdges {
-    pub(crate) hosts: Option<&'static Children>,
-    pub(crate) target: Option<&'static Parent>,
-    pub(crate) _filter: NopWorldQuery<AnyOf<(&'static Children, &'static Parent)>>,
-}
+pub struct HierarchyEdges(pub(crate) AnyOf<(&'static Children, &'static Parent)>);
 
 /// World query to get the edge info of a Relation.
 #[derive(QueryData)]
-pub struct Edges<R: Relation> {
-    pub(crate) hosts: Option<&'static Hosts<R>>,
-    pub(crate) targets: Option<&'static Targets<R>>,
-    pub(crate) _filter: NopWorldQuery<AnyOf<(&'static Hosts<R>, &'static Targets<R>)>>,
-}
+pub struct Edges<R: Relation>(pub(crate) AnyOf<(&'static Hosts<R>, &'static Targets<R>)>);
 
 /// Get information from a single edge bucket.
 pub trait EdgeInfo {
@@ -110,32 +103,32 @@ pub trait EdgeInfo {
 
 impl EdgeInfo for HierarchyEdgesItem<'_> {
     fn hosts(&self) -> &[Entity] {
-        match self.hosts {
-            Some(hosts) => hosts,
-            None => &[],
+        match self {
+            Self((Some(hosts), _)) => hosts,
+            _ => &[],
         }
     }
 
     fn targets(&self) -> &[Entity] {
-        match self.target {
-            Some(target) => target.as_slice(),
-            None => &[],
+        match self {
+            Self((_, Some(target))) => target.as_slice(),
+            _ => &[],
         }
     }
 }
 
 impl<R: Relation> EdgeInfo for EdgesItem<'_, R> {
     fn hosts(&self) -> &[Entity] {
-        match self.hosts {
-            Some(hosts) => &hosts.vec.vec,
-            None => &[],
+        match self {
+            Self((Some(hosts), _)) => &hosts.vec.vec,
+            _ => &[],
         }
     }
 
     fn targets(&self) -> &[Entity] {
-        match self.targets {
-            Some(targets) => &targets.vec.vec,
-            None => &[],
+        match self {
+            Self((_, Some(targets))) => &targets.vec.vec,
+            _ => &[],
         }
     }
 }
