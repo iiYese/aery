@@ -190,19 +190,19 @@
 use bevy_app::{App, Plugin};
 use bevy_ecs::entity::Entity;
 
-///
+#[allow(missing_docs)]
 pub mod edges;
-///
+#[allow(missing_docs)]
 pub mod events;
-///
+#[allow(missing_docs)]
 pub mod for_each;
-///
+#[allow(missing_docs)]
 pub mod operations;
-///
+#[allow(missing_docs)]
 pub mod relation;
-///
+#[allow(missing_docs)]
 pub mod scope;
-///
+#[allow(missing_docs)]
 pub mod tuple_traits;
 
 use events::{CleanupEvent, TargetEvent};
@@ -255,7 +255,7 @@ impl Plugin for Aery {
     }
 }
 
-///
+#[allow(missing_docs)]
 pub mod prelude {
     #[doc(no_inline)]
     pub use super::{

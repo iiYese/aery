@@ -8,7 +8,7 @@ use bevy_ecs::{
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-///
+#[allow(missing_docs)]
 pub mod utils;
 use utils::*;
 

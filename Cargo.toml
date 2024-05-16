@@ -23,8 +23,4 @@ aery_macros = { path = "macros", version = "0.3.0-dev" }
 aquamarine = "0.3.2"
 
 [dev-dependencies]
-bevy = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
-
-[features]
-default = ["aery"]
-aery = []
+bevy = { git = "https://github.com/iiYese/bevy.git", branch = "main", features = ["wayland"] }
