@@ -102,10 +102,3 @@ impl TargetEvent {
             && target.into().eq(&self.target)
     }
 }
-
-/// An event to notify when an entity was despawned as the resultof a cleanup policy.
-#[derive(Event)]
-pub struct CleanupEvent {
-    #[allow(missing_docs)]
-    pub entity: Entity,
-}

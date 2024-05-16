@@ -82,7 +82,7 @@ impl<T> ZstOrPanic for T {}
 ///     world.entity_mut(e6).set::<R>(e2);
 ///
 ///     // Trigger cleanup
-///     world.entity_mut(e0).checked_despawn();
+///     world.entity_mut(e0).despawn();
 ///
 ///     for (entity, expected) in [
 ///         (e0, false),

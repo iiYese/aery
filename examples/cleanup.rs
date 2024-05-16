@@ -58,7 +58,7 @@ fn input(
         .iter()
         .find(|(_, Pos(pos))| (cursor_pos - *pos).length() < 40.)
     {
-        cmds.entity(e).checked_despawn();
+        cmds.entity(e).despawn();
     }
 }
 

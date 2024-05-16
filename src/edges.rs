@@ -1,16 +1,15 @@
 use crate::{
-    events::{CleanupEvent, Op, TargetEvent},
+    events::{Op, TargetEvent},
     relation::{CleanupPolicy, Relation, RelationId, ZstOrPanic},
 };
 
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
-    component::Component,
+    component::{Component, ComponentHooks, ComponentId, StorageType},
     entity::Entity,
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
     system::EntityCommands,
-    world::Command,
-    world::{EntityWorldMut, World},
+    world::{Command, DeferredWorld, EntityWorldMut, World},
 };
 use bevy_hierarchy::{Children, Parent};
 use bevy_log::warn;
@@ -50,15 +49,60 @@ impl<T: PartialEq> SSUVec<T> {
     }
 }
 
-#[derive(Component, Deref, DerefMut)]
-pub(crate) struct Hosts<R: Relation> {
-    #[deref]
-    pub(crate) vec: SSUVec<Entity>,
-    _phantom: PhantomData<R>,
+// For cleanup types:
+// - Orphan
+// - Counted
+pub(crate) fn unset_edges<R: Relation>(mut world: DeferredWorld, id: Entity, _: ComponentId) {
+    let hosts = world
+        .get_mut::<Hosts<R>>(id)
+        .map(|mut hosts| std::mem::take(&mut hosts.vec.vec))
+        .unwrap_or_default();
+
+    let targets = world
+        .get_mut::<Targets<R>>(id)
+        .map(|mut targets| std::mem::take(&mut targets.vec.vec))
+        .unwrap_or_default();
+
+    let mut cmds = world.commands();
+
+    for host in hosts.iter().copied() {
+        cmds.add(UnsetAsymmetric::<R>::buffered(host, id));
+    }
+
+    for target in targets.iter().copied() {
+        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
+    }
 }
 
-#[derive(Component, Deref, DerefMut)]
-pub(crate) struct Targets<R: Relation> {
+// For cleanup types:
+// - Recrusive
+// - Total
+pub(crate) fn clean_recursive<R: Relation>(mut world: DeferredWorld, id: Entity, _: ComponentId) {
+    let hosts = world
+        .get_mut::<Hosts<R>>(id)
+        .map(|mut edges| std::mem::take(&mut edges.vec.vec))
+        .unwrap_or_default();
+
+    let targets = world
+        .get_mut::<Targets<R>>(id)
+        .map(|mut edges| std::mem::take(&mut edges.vec.vec))
+        .unwrap_or_default();
+
+    let mut cmds = world.commands();
+
+    for host in hosts.iter().copied() {
+        cmds.add(move |world: &mut World| {
+            world.despawn(host);
+        });
+    }
+
+    for target in targets.iter().copied() {
+        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
+    }
+}
+
+#[derive(Deref, DerefMut)]
+pub(crate) struct Hosts<R: Relation> {
     #[deref]
     pub(crate) vec: SSUVec<Entity>,
     _phantom: PhantomData<R>,
@@ -73,12 +117,39 @@ impl<R: Relation> Default for Hosts<R> {
     }
 }
 
+impl<R: Relation> Component for Hosts<R> {
+    const STORAGE_TYPE: StorageType = StorageType::Table;
+    fn register_component_hooks(hooks: &mut ComponentHooks) {
+        hooks.on_remove(match R::CLEANUP_POLICY {
+            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
+            CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+        });
+    }
+}
+
+#[derive(Deref, DerefMut)]
+pub(crate) struct Targets<R: Relation> {
+    #[deref]
+    pub(crate) vec: SSUVec<Entity>,
+    _phantom: PhantomData<R>,
+}
+
 impl<R: Relation> Default for Targets<R> {
     fn default() -> Self {
         Self {
             vec: SSUVec::default(),
             _phantom: PhantomData,
         }
+    }
+}
+
+impl<R: Relation> Component for Targets<R> {
+    const STORAGE_TYPE: StorageType = StorageType::Table;
+    fn register_component_hooks(hooks: &mut ComponentHooks) {
+        hooks.on_remove(match R::CLEANUP_POLICY {
+            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
+            CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+        });
     }
 }
 
@@ -150,12 +221,6 @@ impl<E: EdgeInfo> EdgeInfo for Option<E> {
     }
 }
 
-#[derive(Component, Default, Deref, DerefMut)]
-pub(crate) struct OnDelete {
-    #[deref]
-    pub hooks: SSUVec<fn(Entity, &mut World)>,
-}
-
 /// Filter to find roots of a relationship graph.
 /// An entity is a root of `R` if:
 /// - It is targeted by atleast one other entity via `R`.
@@ -191,56 +256,6 @@ pub struct EdgeChanged<R: Relation>(Or<(Changed<Hosts<R>>, Changed<Targets<R>>)>
 
 // Cleanup functions go in both directions to prevent cleanup depending on if a host was
 // added/removed first or if a target was added/removed first.
-
-// For cleanup types:
-// - Orphan
-// - Counted
-pub(crate) fn unset_edges<R: Relation>(id: Entity, world: &mut World) {
-    let hosts = world
-        .get_mut::<Hosts<R>>(id)
-        .map(|mut hosts| std::mem::take(&mut hosts.vec.vec))
-        .unwrap_or_default();
-
-    let targets = world
-        .get_mut::<Targets<R>>(id)
-        .map(|mut targets| std::mem::take(&mut targets.vec.vec))
-        .unwrap_or_default();
-
-    let mut cmds = world.commands();
-
-    for host in hosts.iter().copied() {
-        cmds.add(UnsetAsymmetric::<R>::buffered(host, id));
-    }
-
-    for target in targets.iter().copied() {
-        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
-    }
-}
-
-// For cleanup types:
-// - Recrusive
-// - Total
-pub(crate) fn clean_recursive<R: Relation>(id: Entity, world: &mut World) {
-    let hosts = world
-        .get_mut::<Hosts<R>>(id)
-        .map(|mut edges| std::mem::take(&mut edges.vec.vec))
-        .unwrap_or_default();
-
-    let targets = world
-        .get_mut::<Targets<R>>(id)
-        .map(|mut edges| std::mem::take(&mut edges.vec.vec))
-        .unwrap_or_default();
-
-    let mut cmds = world.commands();
-
-    for host in hosts.iter().copied() {
-        cmds.add(Cleanup(host));
-    }
-
-    for target in targets.iter().copied() {
-        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
-    }
-}
 
 /// Command to set a relationship target for an entity. If either of the participants do not exist
 /// or the host tries to target itself the operation will be ignored and logged.
@@ -308,30 +323,6 @@ where
             return;
         }
 
-        // Add cleanup
-        let mut host_cleanup = world
-            .entity_mut(self.host)
-            .get_mut::<OnDelete>()
-            .map(|mut cleanup| std::mem::take(&mut *cleanup))
-            .unwrap_or_default();
-
-        let mut target_cleanup = world
-            .entity_mut(self.target)
-            .get_mut::<OnDelete>()
-            .map(|mut cleanup| std::mem::take(&mut *cleanup))
-            .unwrap_or_default();
-
-        match R::CLEANUP_POLICY {
-            CleanupPolicy::Orphan | CleanupPolicy::Counted => {
-                host_cleanup.add(unset_edges::<R>);
-                target_cleanup.add(unset_edges::<R>);
-            }
-            _ => {
-                host_cleanup.add(clean_recursive::<R>);
-                target_cleanup.add(clean_recursive::<R>);
-            }
-        }
-
         // add target
         let mut host_targets = world
             .entity_mut(self.host)
@@ -341,11 +332,7 @@ where
 
         let old = host_targets.vec.vec.first().copied();
         host_targets.add(self.target);
-
-        world
-            .entity_mut(self.host)
-            .insert(host_targets)
-            .insert(host_cleanup);
+        world.entity_mut(self.host).insert(host_targets);
 
         // add host
         let mut target_hosts = world
@@ -355,11 +342,7 @@ where
             .unwrap_or_default();
 
         target_hosts.vec.add(self.host);
-
-        world
-            .entity_mut(self.target)
-            .insert(target_hosts)
-            .insert(target_cleanup);
+        world.entity_mut(self.target).insert(target_hosts);
 
         world.send_event(TargetEvent {
             host: self.host,
@@ -472,24 +455,6 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
         } else if let Some(mut host) = world.get_entity_mut(self.host) {
             host_exists = true;
             host.remove::<Targets<R>>();
-
-            let mut cleanup = host
-                .get_mut::<OnDelete>()
-                .map(|mut cleanup| std::mem::take(&mut *cleanup))
-                .unwrap_or_default();
-
-            if host.get::<Hosts<R>>().is_none() {
-                cleanup.remove(match R::CLEANUP_POLICY {
-                    CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
-                    CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
-                })
-            }
-
-            if cleanup.vec.is_empty() {
-                host.remove::<OnDelete>();
-            } else {
-                host.insert(cleanup);
-            }
         }
 
         let mut target_exists = false;
@@ -502,32 +467,15 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             CleanupPolicy::Counted | CleanupPolicy::Total
         ) {
             if self.buffered {
-                world.commands().add(Cleanup(self.target));
+                world.commands().add(move |world: &mut World| {
+                    world.despawn(self.target);
+                });
             } else {
-                Command::apply(CheckedDespawn(self.target), world);
+                world.despawn(self.target);
             }
         } else if let Some(mut target) = world.get_entity_mut(self.target) {
             target_exists = true;
             target.remove::<Hosts<R>>();
-
-            let mut cleanup = target
-                .get_mut::<OnDelete>()
-                .map(|mut cleanup| std::mem::take(&mut *cleanup))
-                .unwrap_or_default();
-
-            if target.get::<Targets<R>>().is_none() {
-                cleanup.remove(match R::CLEANUP_POLICY {
-                    CleanupPolicy::Orphan => unset_edges::<R>,
-                    CleanupPolicy::Recursive => clean_recursive::<R>,
-                    _ => unreachable!(),
-                })
-            }
-
-            if cleanup.vec.is_empty() {
-                target.remove::<OnDelete>();
-            } else {
-                target.insert(cleanup);
-            }
         }
 
         if host_exists && target_exists {
@@ -538,38 +486,6 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 relation_id: RelationId::of::<R>(),
             });
         }
-    }
-}
-
-/// Command to despawn entities with rleations. Despawning via any other method can lead to
-/// dangling which will not produce correct behavior!
-pub struct CheckedDespawn(pub Entity);
-
-impl Command for CheckedDespawn {
-    fn apply(self, world: &mut World) {
-        Command::apply(Cleanup(self.0), world);
-
-        /*while let Some(mut buffer) = world.remove_resource::<AeryBuffer>() {
-            buffer.apply(world);
-        }*/
-    }
-}
-
-struct Cleanup(Entity);
-
-impl Command for Cleanup {
-    fn apply(self, world: &mut World) {
-        for func in world
-            .get_mut::<OnDelete>(self.0)
-            .map(|mut cleanup| std::mem::take(&mut cleanup.vec))
-            .unwrap_or_default()
-            .iter()
-        {
-            func(self.0, world);
-        }
-
-        world.despawn(self.0);
-        world.send_event(CleanupEvent { entity: self.0 });
     }
 }
 
@@ -665,8 +581,6 @@ pub trait RelationCommands {
     fn unset_all<R: Relation>(&mut self) -> &mut Self;
     /// [`Withdraw`] from a relationship.
     fn withdraw<R: Relation>(&mut self) -> &mut Self;
-    /// [`CheckedDespawn`] an entity.
-    fn checked_despawn(self);
 }
 
 impl RelationCommands for EntityWorldMut<'_> {
@@ -736,12 +650,6 @@ impl RelationCommands for EntityWorldMut<'_> {
         self.update_location();
         self
     }
-
-    fn checked_despawn(self) {
-        let id = self.id();
-        let world = self.into_world_mut();
-        Command::apply(CheckedDespawn(id), world);
-    }
 }
 
 impl RelationCommands for EntityCommands<'_> {
@@ -786,23 +694,18 @@ impl RelationCommands for EntityCommands<'_> {
         });
         self
     }
-
-    fn checked_despawn(mut self) {
-        let id = self.id();
-        self.commands().add(CheckedDespawn(id));
-    }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::Hosts;
     use super::Targets;
-    use super::{Hosts, OnDelete};
     use crate::prelude::*;
     use bevy_ecs::prelude::*;
     use std::array::from_fn;
 
-    fn has_edges(world: &World, entity: Entity) -> bool {
-        world.get::<OnDelete>(entity).is_some()
+    fn has_edges<R: Relation>(world: &World, entity: Entity) -> bool {
+        world.get::<Hosts<R>>(entity).is_some() || world.get::<Targets<R>>(entity).is_some()
     }
 
     fn is_root<R: Relation>(world: &World, entity: Entity) -> bool {
@@ -838,13 +741,15 @@ mod tests {
         let [host, target] = from_fn(|_| world.spawn_empty().id());
 
         world.entity_mut(host).set::<R>(target);
+        world.flush_commands();
         assert!(targeting::<R>(&world, host, target));
         assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, target));
 
         world.entity_mut(host).unset::<R>(target);
-        assert!(!has_edges(&world, target));
-        assert!(!has_edges(&world, host));
+        world.flush_commands();
+        assert!(!has_edges::<R>(&world, target));
+        assert!(!has_edges::<R>(&world, host));
         assert!(!is_participant::<R>(&world, host));
         assert!(!is_root::<R>(&world, target));
     }
@@ -859,6 +764,7 @@ mod tests {
 
         // Before overwrite
         world.entity_mut(host).set::<R>(t0);
+        world.flush_commands();
 
         assert!(targeting::<R>(&world, host, t0));
         assert!(is_participant::<R>(&world, host));
@@ -866,12 +772,13 @@ mod tests {
 
         // After overwrite
         world.entity_mut(host).set::<R>(t1);
+        world.flush_commands();
 
         assert!(targeting::<R>(&world, host, t1));
         assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, t1));
 
-        assert!(!has_edges(&world, t0));
+        assert!(!has_edges::<R>(&world, t0));
         assert!(!is_root::<R>(&world, t0));
     }
 
@@ -994,17 +901,37 @@ mod tests {
         fn assert_cleaned(&self, world: &World) {
             assert!(world.get_entity(self.center).is_none());
 
-            assert!(!has_edges(world, self.hosts.orphan));
-            assert!(!has_edges(world, self.targets.orphan));
+            assert!(
+                !(has_edges::<Orphan>(world, self.hosts.orphan)
+                    || has_edges::<Counted>(world, self.hosts.orphan)
+                    || has_edges::<Recursive>(world, self.hosts.orphan)
+                    || has_edges::<Total>(world, self.hosts.orphan))
+            );
+            assert!(
+                !(has_edges::<Orphan>(world, self.targets.orphan)
+                    || has_edges::<Counted>(world, self.targets.orphan)
+                    || has_edges::<Recursive>(world, self.targets.orphan)
+                    || has_edges::<Total>(world, self.targets.orphan))
+            );
             assert!(!is_participant::<Orphan>(world, self.hosts.orphan));
             assert!(!is_root::<Orphan>(world, self.targets.orphan));
 
             assert!(world.get_entity(self.targets.counted).is_none());
-            assert!(!has_edges(world, self.hosts.counted));
+            assert!(
+                !(has_edges::<Orphan>(world, self.hosts.counted)
+                    || has_edges::<Counted>(world, self.hosts.counted)
+                    || has_edges::<Recursive>(world, self.hosts.counted)
+                    || has_edges::<Total>(world, self.hosts.counted))
+            );
             assert!(!is_participant::<Counted>(world, self.hosts.counted,));
 
             assert!(world.get_entity(self.hosts.recursive).is_none());
-            assert!(!has_edges(world, self.targets.recursive));
+            assert!(
+                !(has_edges::<Orphan>(world, self.targets.recursive)
+                    || has_edges::<Counted>(world, self.targets.recursive)
+                    || has_edges::<Recursive>(world, self.targets.recursive)
+                    || has_edges::<Total>(world, self.targets.recursive))
+            );
             assert!(!is_root::<Recursive>(world, self.targets.recursive));
 
             assert!(world.get_entity(self.hosts.total).is_none());
@@ -1023,8 +950,9 @@ mod tests {
 
         let mut e = world.spawn_empty();
         e.set::<R>(test.center);
-        e.checked_despawn();
+        e.despawn();
 
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1040,8 +968,9 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e);
+        world.entity_mut(e).despawn();
 
-        world.entity_mut(e).checked_despawn();
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1058,8 +987,9 @@ mod tests {
 
         let mut e = world.spawn_empty();
         e.set::<R>(test.center);
-        e.checked_despawn();
+        e.despawn();
 
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1075,8 +1005,9 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e);
+        world.entity_mut(e).despawn();
 
-        world.entity_mut(e).checked_despawn();
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1093,8 +1024,9 @@ mod tests {
 
         let mut e = world.spawn_empty();
         e.set::<R>(test.center);
-        e.checked_despawn();
+        e.despawn();
 
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1111,8 +1043,9 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e);
+        world.entity_mut(e).despawn();
 
-        world.entity_mut(e).checked_despawn();
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1128,8 +1061,9 @@ mod tests {
 
         let mut e = world.spawn_empty();
         e.set::<R>(test.center);
-        e.checked_despawn();
+        e.despawn();
 
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1145,8 +1079,9 @@ mod tests {
 
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e);
+        world.entity_mut(e).despawn();
 
-        world.entity_mut(e).checked_despawn();
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1164,6 +1099,7 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1176,11 +1112,10 @@ mod tests {
         let mut world = World::new();
 
         let test = Test::new(&mut world);
-
         let e = world.spawn_empty().id();
-
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1200,6 +1135,7 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1217,6 +1153,7 @@ mod tests {
 
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1236,6 +1173,7 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
+        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1250,11 +1188,10 @@ mod tests {
         let mut world = World::new();
 
         let test = Test::new(&mut world);
-
         let e = world.spawn_empty().id();
-
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1273,6 +1210,7 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1286,11 +1224,10 @@ mod tests {
         let mut world = World::new();
 
         let test = Test::new(&mut world);
-
         let e = world.spawn_empty().id();
-
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
+        world.flush_commands();
         test.assert_cleaned(&world);
     }
 }

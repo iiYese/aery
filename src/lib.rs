@@ -205,7 +205,7 @@ pub mod scope;
 #[allow(missing_docs)]
 pub mod tuple_traits;
 
-use events::{CleanupEvent, TargetEvent};
+use events::TargetEvent;
 
 /// A type to enable wildcard APIs
 pub enum Var<T> {
@@ -251,7 +251,7 @@ pub struct Aery;
 
 impl Plugin for Aery {
     fn build(&self, app: &mut App) {
-        app.add_event::<TargetEvent>().add_event::<CleanupEvent>();
+        app.add_event::<TargetEvent>();
     }
 }
 
@@ -265,7 +265,7 @@ pub mod prelude {
     #[doc(no_inline)]
     pub use crate::{
         edges::{Abstains, Branch, Leaf, Participates, RelationCommands, Root, Set, Unset},
-        events::{CleanupEvent, Op, TargetEvent},
+        events::{Op, TargetEvent},
         for_each::*,
         operations::{
             utils::{EdgeSide, Relations, Up},
