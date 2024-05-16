@@ -741,13 +741,11 @@ mod tests {
         let [host, target] = from_fn(|_| world.spawn_empty().id());
 
         world.entity_mut(host).set::<R>(target);
-        world.flush_commands();
         assert!(targeting::<R>(&world, host, target));
         assert!(is_participant::<R>(&world, host));
         assert!(is_root::<R>(&world, target));
 
         world.entity_mut(host).unset::<R>(target);
-        world.flush_commands();
         assert!(!has_edges::<R>(&world, target));
         assert!(!has_edges::<R>(&world, host));
         assert!(!is_participant::<R>(&world, host));
@@ -764,7 +762,6 @@ mod tests {
 
         // Before overwrite
         world.entity_mut(host).set::<R>(t0);
-        world.flush_commands();
 
         assert!(targeting::<R>(&world, host, t0));
         assert!(is_participant::<R>(&world, host));
@@ -772,7 +769,6 @@ mod tests {
 
         // After overwrite
         world.entity_mut(host).set::<R>(t1);
-        world.flush_commands();
 
         assert!(targeting::<R>(&world, host, t1));
         assert!(is_participant::<R>(&world, host));
@@ -952,7 +948,6 @@ mod tests {
         e.set::<R>(test.center);
         e.despawn();
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -970,7 +965,6 @@ mod tests {
         world.entity_mut(test.center).set::<R>(e);
         world.entity_mut(e).despawn();
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -989,7 +983,6 @@ mod tests {
         e.set::<R>(test.center);
         e.despawn();
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1007,7 +1000,6 @@ mod tests {
         world.entity_mut(test.center).set::<R>(e);
         world.entity_mut(e).despawn();
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1026,7 +1018,6 @@ mod tests {
         e.set::<R>(test.center);
         e.despawn();
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1045,7 +1036,6 @@ mod tests {
         world.entity_mut(test.center).set::<R>(e);
         world.entity_mut(e).despawn();
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1063,7 +1053,6 @@ mod tests {
         e.set::<R>(test.center);
         e.despawn();
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1081,7 +1070,6 @@ mod tests {
         world.entity_mut(test.center).set::<R>(e);
         world.entity_mut(e).despawn();
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1099,7 +1087,6 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1115,7 +1102,6 @@ mod tests {
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1135,7 +1121,6 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1153,7 +1138,6 @@ mod tests {
 
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1173,7 +1157,6 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
-        world.flush_commands();
         test.assert_unchanged(&world);
         assert!(!is_participant::<R>(&world, test.center));
     }
@@ -1191,7 +1174,6 @@ mod tests {
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1210,7 +1192,6 @@ mod tests {
             .set::<R>(test.center)
             .unset::<R>(test.center);
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 
@@ -1227,7 +1208,6 @@ mod tests {
         let e = world.spawn_empty().id();
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
-        world.flush_commands();
         test.assert_cleaned(&world);
     }
 }
