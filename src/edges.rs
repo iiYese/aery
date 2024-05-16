@@ -8,8 +8,8 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
-    system::{EntityCommands, Resource},
-    world::{Command, CommandQueue},
+    system::EntityCommands,
+    world::Command,
     world::{EntityWorldMut, World},
 };
 use bevy_hierarchy::{Children, Parent};
@@ -189,9 +189,6 @@ pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
 #[derive(QueryFilter)]
 pub struct EdgeChanged<R: Relation>(Or<(Changed<Hosts<R>>, Changed<Targets<R>>)>);
 
-#[derive(Resource, Default, Deref, DerefMut)]
-struct AeryBuffer(CommandQueue);
-
 // Cleanup functions go in both directions to prevent cleanup depending on if a host was
 // added/removed first or if a target was added/removed first.
 
@@ -209,14 +206,14 @@ pub(crate) fn unset_edges<R: Relation>(id: Entity, world: &mut World) {
         .map(|mut targets| std::mem::take(&mut targets.vec.vec))
         .unwrap_or_default();
 
-    let mut buffer = world.get_resource_or_insert_with(AeryBuffer::default);
+    let mut cmds = world.commands();
 
     for host in hosts.iter().copied() {
-        buffer.push(UnsetAsymmetric::<R>::buffered(host, id));
+        cmds.add(UnsetAsymmetric::<R>::buffered(host, id));
     }
 
     for target in targets.iter().copied() {
-        buffer.push(UnsetAsymmetric::<R>::buffered(id, target));
+        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
     }
 }
 
@@ -234,14 +231,14 @@ pub(crate) fn clean_recursive<R: Relation>(id: Entity, world: &mut World) {
         .map(|mut edges| std::mem::take(&mut edges.vec.vec))
         .unwrap_or_default();
 
-    let mut buffer = world.get_resource_or_insert_with(AeryBuffer::default);
+    let mut cmds = world.commands();
 
     for host in hosts.iter().copied() {
-        buffer.push(Cleanup(host));
+        cmds.add(Cleanup(host));
     }
 
     for target in targets.iter().copied() {
-        buffer.push(UnsetAsymmetric::<R>::buffered(id, target));
+        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
     }
 }
 
@@ -505,9 +502,7 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             CleanupPolicy::Counted | CleanupPolicy::Total
         ) {
             if self.buffered {
-                world
-                    .get_resource_or_insert_with(AeryBuffer::default)
-                    .push(Cleanup(self.target));
+                world.commands().add(Cleanup(self.target));
             } else {
                 Command::apply(CheckedDespawn(self.target), world);
             }
@@ -552,13 +547,11 @@ pub struct CheckedDespawn(pub Entity);
 
 impl Command for CheckedDespawn {
     fn apply(self, world: &mut World) {
-        world
-            .get_resource_or_insert_with(AeryBuffer::default)
-            .push(Cleanup(self.0));
+        Command::apply(Cleanup(self.0), world);
 
-        while let Some(mut buffer) = world.remove_resource::<AeryBuffer>() {
+        /*while let Some(mut buffer) = world.remove_resource::<AeryBuffer>() {
             buffer.apply(world);
-        }
+        }*/
     }
 }
 
