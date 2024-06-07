@@ -12,15 +12,16 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy_app = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
-bevy_derive = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
-bevy_ecs = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
-bevy_hierarchy = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
-bevy_log = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
-bevy_utils = { git = "https://github.com/iiYese/bevy.git", branch = "main" }
+bevy_app = "0.14.0-rc.2"
+bevy_derive = "0.14.0-rc.2"
+bevy_ecs = "0.14.0-rc.2"
+bevy_hierarchy = "0.14.0-rc.2"
+bevy_reflect = "0.14.0-rc.2"
+bevy_log = "0.14.0-rc.2"
+bevy_utils = "0.14.0-rc.2"
 smallvec = "1.11.0"
 aery_macros = { path = "macros", version = "0.3.0-dev" }
 aquamarine = "0.3.2"
 
 [dev-dependencies]
-bevy = { git = "https://github.com/iiYese/bevy.git", branch = "main", features = ["wayland"] }
+bevy = "0.14.0-rc.2"

@@ -6,13 +6,16 @@ use crate::{
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::{Component, ComponentHooks, ComponentId, StorageType},
-    entity::Entity,
+    entity::{Entity, EntityMapper, MapEntities},
+    prelude::FromWorld,
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
+    reflect::{ReflectComponent, ReflectMapEntities},
     system::EntityCommands,
     world::{Command, DeferredWorld, EntityWorldMut, World},
 };
 use bevy_hierarchy::{Children, Parent};
 use bevy_log::warn;
+use bevy_reflect::Reflect;
 
 use smallvec::SmallVec;
 use std::marker::PhantomData;
@@ -101,7 +104,10 @@ pub(crate) fn clean_recursive<R: Relation>(mut world: DeferredWorld, id: Entity,
     }
 }
 
-#[derive(Deref, DerefMut)]
+#[derive(Deref, DerefMut /*, Reflect, TypePath*/)]
+//#[type_path = "aery::edges"]
+//#[type_name = "Hosts"]
+//#[reflect(Component, MapEntities, type_path = false, where R: Relation)]
 pub(crate) struct Hosts<R: Relation> {
     #[deref]
     pub(crate) vec: SSUVec<Entity>,
@@ -113,6 +119,14 @@ impl<R: Relation> Default for Hosts<R> {
         Self {
             vec: SSUVec::default(),
             _phantom: PhantomData,
+        }
+    }
+}
+
+impl<R: Relation> MapEntities for Hosts<R> {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        for entity in self.vec.vec.iter_mut() {
+            *entity = entity_mapper.map_entity(*entity);
         }
     }
 }

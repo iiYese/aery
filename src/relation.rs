@@ -1,4 +1,5 @@
 use crate::Var;
+use bevy_reflect::Reflect;
 use core::any::TypeId;
 
 /// Type ID of a relation.
