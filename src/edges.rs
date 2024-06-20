@@ -8,7 +8,7 @@ use bevy_ecs::{
     component::{Component, ComponentHooks, ComponentId, StorageType},
     entity::{Entity, EntityMapper, MapEntities},
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
-    reflect::{ReflectComponent, ReflectMapEntities},
+    reflect::{AppTypeRegistry, ReflectComponent, ReflectMapEntities},
     system::EntityCommands,
     world::{Command, DeferredWorld, EntityWorldMut, World},
 };
@@ -109,6 +109,7 @@ pub(crate) fn clean_recursive<R: Relation>(mut world: DeferredWorld, id: Entity,
 pub(crate) struct Hosts<R: Relation> {
     #[deref]
     pub(crate) vec: SSUVec<Entity>,
+    #[reflect(ignore)]
     _phantom: PhantomData<R>,
 }
 
@@ -154,17 +155,25 @@ impl<R: Relation> Default for Hosts<R> {
 impl<R: Relation> Component for Hosts<R> {
     const STORAGE_TYPE: StorageType = StorageType::Table;
     fn register_component_hooks(hooks: &mut ComponentHooks) {
-        hooks.on_remove(match R::CLEANUP_POLICY {
-            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
-            CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
-        });
+        hooks
+            .on_add(|mut world, _, _| {
+                if let Some(registry) = world.get_resource_mut::<AppTypeRegistry>() {
+                    registry.write().register::<Self>();
+                }
+            })
+            .on_remove(match R::CLEANUP_POLICY {
+                CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
+                CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+            });
     }
 }
 
-#[derive(Deref, DerefMut)]
+#[derive(Deref, DerefMut, Reflect)]
+#[reflect(Component, MapEntities, type_path = false, where R: Relation)]
 pub(crate) struct Targets<R: Relation> {
     #[deref]
     pub(crate) vec: SSUVec<Entity>,
+    #[reflect(ignore)]
     _phantom: PhantomData<R>,
 }
 
@@ -210,10 +219,16 @@ impl<R: Relation> Default for Targets<R> {
 impl<R: Relation> Component for Targets<R> {
     const STORAGE_TYPE: StorageType = StorageType::Table;
     fn register_component_hooks(hooks: &mut ComponentHooks) {
-        hooks.on_remove(match R::CLEANUP_POLICY {
-            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
-            CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
-        });
+        hooks
+            .on_add(|mut world, _, _| {
+                if let Some(registry) = world.get_resource_mut::<AppTypeRegistry>() {
+                    registry.write().register::<Self>();
+                }
+            })
+            .on_remove(match R::CLEANUP_POLICY {
+                CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
+                CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+            });
     }
 }
 
