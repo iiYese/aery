@@ -7,7 +7,6 @@ use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::{Component, ComponentHooks, ComponentId, StorageType},
     entity::{Entity, EntityMapper, MapEntities},
-    prelude::FromWorld,
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
     reflect::{ReflectComponent, ReflectMapEntities},
     system::EntityCommands,
@@ -15,12 +14,13 @@ use bevy_ecs::{
 };
 use bevy_hierarchy::{Children, Parent};
 use bevy_log::warn;
-use bevy_reflect::Reflect;
+use bevy_reflect::{utility::GenericTypePathCell, Reflect, TypePath};
 
 use smallvec::SmallVec;
 use std::marker::PhantomData;
 
 // Small Stable Unique Vec
+#[derive(Reflect)]
 pub(crate) struct SSUVec<T: PartialEq> {
     pub vec: SmallVec<[T; 1]>,
 }
@@ -104,14 +104,42 @@ pub(crate) fn clean_recursive<R: Relation>(mut world: DeferredWorld, id: Entity,
     }
 }
 
-#[derive(Deref, DerefMut /*, Reflect, TypePath*/)]
-//#[type_path = "aery::edges"]
-//#[type_name = "Hosts"]
-//#[reflect(Component, MapEntities, type_path = false, where R: Relation)]
+#[derive(Deref, DerefMut, Reflect)]
+#[reflect(Component, MapEntities, type_path = false, where R: Relation)]
 pub(crate) struct Hosts<R: Relation> {
     #[deref]
     pub(crate) vec: SSUVec<Entity>,
     _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> MapEntities for Hosts<R> {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        for entity in self.vec.vec.iter_mut() {
+            *entity = entity_mapper.map_entity(*entity);
+        }
+    }
+}
+
+impl<R: Relation> TypePath for Hosts<R> {
+    fn type_path() -> &'static str {
+        static CELL: GenericTypePathCell = GenericTypePathCell::new();
+        CELL.get_or_insert::<Self, _>(|| {
+            format!("aery::edges::Hosts<{}>", std::any::type_name::<R>())
+        })
+    }
+
+    fn short_type_path() -> &'static str {
+        static CELL: GenericTypePathCell = GenericTypePathCell::new();
+        CELL.get_or_insert::<Self, _>(|| format!("Hosts<{}>", std::any::type_name::<R>()))
+    }
+
+    fn type_ident() -> Option<&'static str> {
+        Some(std::any::type_name::<R>())
+    }
+
+    fn crate_name() -> Option<&'static str> {
+        Some("aery")
+    }
 }
 
 impl<R: Relation> Default for Hosts<R> {
@@ -119,14 +147,6 @@ impl<R: Relation> Default for Hosts<R> {
         Self {
             vec: SSUVec::default(),
             _phantom: PhantomData,
-        }
-    }
-}
-
-impl<R: Relation> MapEntities for Hosts<R> {
-    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
-        for entity in self.vec.vec.iter_mut() {
-            *entity = entity_mapper.map_entity(*entity);
         }
     }
 }
@@ -146,6 +166,36 @@ pub(crate) struct Targets<R: Relation> {
     #[deref]
     pub(crate) vec: SSUVec<Entity>,
     _phantom: PhantomData<R>,
+}
+
+impl<R: Relation> MapEntities for Targets<R> {
+    fn map_entities<M: EntityMapper>(&mut self, entity_mapper: &mut M) {
+        for entity in self.vec.vec.iter_mut() {
+            *entity = entity_mapper.map_entity(*entity);
+        }
+    }
+}
+
+impl<R: Relation> TypePath for Targets<R> {
+    fn type_path() -> &'static str {
+        static CELL: GenericTypePathCell = GenericTypePathCell::new();
+        CELL.get_or_insert::<Self, _>(|| {
+            format!("aery::edges::Targets<{}>", std::any::type_name::<R>())
+        })
+    }
+
+    fn short_type_path() -> &'static str {
+        static CELL: GenericTypePathCell = GenericTypePathCell::new();
+        CELL.get_or_insert::<Self, _>(|| format!("Targets<{}>", std::any::type_name::<R>()))
+    }
+
+    fn type_ident() -> Option<&'static str> {
+        Some(std::any::type_name::<R>())
+    }
+
+    fn crate_name() -> Option<&'static str> {
+        Some("aery")
+    }
 }
 
 impl<R: Relation> Default for Targets<R> {
