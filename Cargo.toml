@@ -12,16 +12,16 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy_app = "0.14.0-rc.3"
-bevy_derive = "0.14.0-rc.3"
-bevy_ecs = "0.14.0-rc.3"
-bevy_hierarchy = "0.14.0-rc.3"
-bevy_reflect = "0.14.0-rc.3"
-bevy_log = "0.14.0-rc.3"
-bevy_utils = "0.14.0-rc.3"
+bevy_app = "0.14.0-rc.4"
+bevy_derive = "0.14.0-rc.4"
+bevy_ecs = "0.14.0-rc.4"
+bevy_hierarchy = "0.14.0-rc.4"
+bevy_reflect = "0.14.0-rc.4"
+bevy_log = "0.14.0-rc.4"
+bevy_utils = "0.14.0-rc.4"
 smallvec = "1.11.0"
 aery_macros = { path = "macros", version = "0.3.0-dev" }
 aquamarine = "0.3.2"
 
 [dev-dependencies]
-bevy = "0.14.0-rc.3"
+bevy = "0.14.0-rc.4"
