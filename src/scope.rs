@@ -6,7 +6,8 @@ use crate::{
 use bevy_ecs::{
     bundle::Bundle,
     entity::Entity,
-    system::{Command, Commands, EntityCommands},
+    system::{Commands, EntityCommands},
+    world::Command,
     world::{EntityWorldMut, World},
 };
 

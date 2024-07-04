@@ -1,6 +1,5 @@
 use aery::prelude::*;
 use bevy::{prelude::*, window::PrimaryWindow};
-use bevy_vector_shapes::prelude::*;
 
 const WIN_SIZE: Vec2 = Vec2::new(800., 600.);
 
@@ -33,10 +32,9 @@ fn setup(mut cmds: Commands) {
         });
 }
 
-fn draw(mut painter: ShapePainter, tree: Query<&Pos>) {
+fn draw(mut gizmos: Gizmos, tree: Query<&Pos>) {
     for Pos(pos) in tree.iter() {
-        painter.set_translation(pos.extend(-1.));
-        painter.circle(40.);
+        gizmos.circle_2d(*pos, 40., Color::WHITE);
     }
 }
 
@@ -60,21 +58,19 @@ fn input(
         .iter()
         .find(|(_, Pos(pos))| (cursor_pos - *pos).length() < 40.)
     {
-        cmds.entity(e).checked_despawn();
+        cmds.entity(e).despawn();
     }
 }
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins.set(WindowPlugin {
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 resolution: WIN_SIZE.into(),
                 ..default()
             }),
             ..default()
-        }),))
-        .add_plugins(Aery)
-        .add_plugins(Shape2dPlugin::default())
+        }))
         .add_systems(Startup, setup)
         .add_systems(Update, (input, draw))
         .run();

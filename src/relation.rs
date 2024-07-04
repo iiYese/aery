@@ -1,5 +1,8 @@
-use crate::Var;
 use core::any::TypeId;
+
+use crate::edges::{Hosts, Targets};
+use bevy_app::App;
+use bevy_ecs::{reflect::AppTypeRegistry, world::World};
 
 /// Type ID of a relation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -19,22 +22,9 @@ impl<R: Relation> From<R> for RelationId {
     }
 }
 
-impl<R: Relation> From<R> for Var<RelationId> {
-    fn from(_: R) -> Self {
-        let _ = R::ZST_OR_PANIC;
-        Self::Val(RelationId::of::<R>())
-    }
-}
-
 impl From<Hierarchy> for RelationId {
     fn from(_: Hierarchy) -> Self {
         RelationId(TypeId::of::<Hierarchy>())
-    }
-}
-
-impl From<Hierarchy> for Var<RelationId> {
-    fn from(_: Hierarchy) -> Self {
-        Self::Val(RelationId(TypeId::of::<Hierarchy>()))
     }
 }
 
@@ -82,7 +72,7 @@ impl<T> ZstOrPanic for T {}
 ///     world.entity_mut(e6).set::<R>(e2);
 ///
 ///     // Trigger cleanup
-///     world.entity_mut(e0).checked_despawn();
+///     world.entity_mut(e0).despawn();
 ///
 ///     for (entity, expected) in [
 ///         (e0, false),
@@ -99,7 +89,7 @@ impl<T> ZstOrPanic for T {}
 ///# use bevy::app::AppExit;
 ///#
 ///# fn exit_system(mut exit: EventWriter<AppExit>) {
-///#     exit.send(AppExit);
+///#     exit.send(AppExit::Success);
 ///# }
 ///#
 ///# fn main() {
@@ -255,3 +245,39 @@ pub trait Relation: 'static + Sized + Send + Sync {
 /// }
 /// ```
 pub struct Hierarchy;
+
+/// Register relation for reflection
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn main() {
+///     App::new()
+///         .register_relation::<R>()
+///         // ..
+///         .run();
+/// }
+/// ```
+pub trait RegisterRelation {
+    fn register_relation<R: Relation>(&mut self) -> &mut Self;
+}
+
+impl RegisterRelation for World {
+    fn register_relation<R: Relation>(&mut self) -> &mut Self {
+        if let Some(registry) = self.get_resource_mut::<AppTypeRegistry>() {
+            registry.write().register::<Hosts<R>>();
+            registry.write().register::<Targets<R>>();
+        }
+        self
+    }
+}
+
+impl RegisterRelation for App {
+    fn register_relation<R: Relation>(&mut self) -> &mut Self {
+        self.world_mut().register_relation::<R>();
+        self
+    }
+}

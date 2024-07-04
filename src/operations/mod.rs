@@ -8,7 +8,7 @@ use bevy_ecs::{
 
 use std::{borrow::Borrow, marker::PhantomData};
 
-///
+#[allow(missing_docs)]
 pub mod utils;
 use utils::*;
 
@@ -650,11 +650,10 @@ mod tests {
             assert_eq!(2, c.get(c1).unwrap().0);
             assert_eq!(0, c.get(c2).unwrap().0);
 
-            exit.send(AppExit);
+            exit.send(AppExit::Success);
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
@@ -731,11 +730,10 @@ mod tests {
             assert_eq!(0, c.get(c1).unwrap().0);
             assert_eq!(2, c.get(c2).unwrap().0);
 
-            exit.send(AppExit);
+            exit.send(AppExit::Success);
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
@@ -809,11 +807,10 @@ mod tests {
             assert_eq!(1, b.get(b2).unwrap().0);
             assert_eq!(2, c.get(c1).unwrap().0);
 
-            exit.send(AppExit);
+            exit.send(AppExit::Success);
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
@@ -888,11 +885,10 @@ mod tests {
             assert_eq!(2, c.get(c0).unwrap().0);
             assert_eq!(2, c.get(c2).unwrap().0);
 
-            exit.send(AppExit);
+            exit.send(AppExit::Success);
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
