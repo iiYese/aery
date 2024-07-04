@@ -1,4 +1,3 @@
-use crate::Var;
 use core::any::TypeId;
 
 /// Type ID of a relation.
@@ -19,22 +18,9 @@ impl<R: Relation> From<R> for RelationId {
     }
 }
 
-impl<R: Relation> From<R> for Var<RelationId> {
-    fn from(_: R) -> Self {
-        let _ = R::ZST_OR_PANIC;
-        Self::Val(RelationId::of::<R>())
-    }
-}
-
 impl From<Hierarchy> for RelationId {
     fn from(_: Hierarchy) -> Self {
         RelationId(TypeId::of::<Hierarchy>())
-    }
-}
-
-impl From<Hierarchy> for Var<RelationId> {
-    fn from(_: Hierarchy) -> Self {
-        Self::Val(RelationId(TypeId::of::<Hierarchy>()))
     }
 }
 

@@ -1,12 +1,12 @@
-use crate::{
-    events::{Op, TargetEvent},
-    relation::{CleanupPolicy, Relation, RelationId, ZstOrPanic},
-};
+use std::marker::PhantomData;
+
+use smallvec::SmallVec;
 
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::{Component, ComponentHooks, ComponentId, StorageType},
     entity::{Entity, EntityMapper, MapEntities},
+    event::Event,
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
     reflect::{AppTypeRegistry, ReflectComponent, ReflectMapEntities},
     system::EntityCommands,
@@ -16,8 +16,7 @@ use bevy_hierarchy::{Children, Parent};
 use bevy_log::warn;
 use bevy_reflect::{utility::GenericTypePathCell, Reflect, TypePath};
 
-use smallvec::SmallVec;
-use std::marker::PhantomData;
+use crate::relation::{CleanupPolicy, Relation, ZstOrPanic};
 
 // Small Stable Unique Vec
 #[derive(Reflect)]
@@ -333,8 +332,21 @@ pub struct Abstains<R: Relation>((Without<Hosts<R>>, Without<Targets<R>>));
 #[derive(QueryFilter)]
 pub struct EdgeChanged<R: Relation>(Or<(Changed<Hosts<R>>, Changed<Targets<R>>)>);
 
-// Cleanup functions go in both directions to prevent cleanup depending on if a host was
-// added/removed first or if a target was added/removed first.
+/// Event triggered whenever an entity gets a new relation
+#[derive(Event, Clone, Copy, Debug)]
+pub struct SetEvent<R: Relation> {
+    /// The target entity of the event. The triggers entity is the host.
+    pub target: Entity,
+    _phantom: PhantomData<R>,
+}
+
+/// Event triggered whenever an entity loses a relation
+#[derive(Event, Clone, Copy, Debug)]
+pub struct UnsetEvent<R: Relation> {
+    /// The target entity of the event. The triggers entity is the host.
+    pub target: Entity,
+    _phantom: PhantomData<R>,
+}
 
 /// Command to set a relationship target for an entity. If either of the participants do not exist
 /// or the host tries to target itself the operation will be ignored and logged.
@@ -423,12 +435,13 @@ where
         target_hosts.vec.add(self.host);
         world.entity_mut(self.target).insert(target_hosts);
 
-        world.send_event(TargetEvent {
-            host: self.host,
-            target_op: Op::Set,
-            target: self.target,
-            relation_id: RelationId::of::<R>(),
-        });
+        world.trigger_targets(
+            SetEvent::<R> {
+                target: self.target,
+                _phantom: PhantomData,
+            },
+            self.host,
+        );
 
         // Symmetric set has to happen before exclusivity unset otherwise
         // an entity can get despawned when it shouldn't.
@@ -558,12 +571,13 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
         }
 
         if host_exists && target_exists {
-            world.send_event(TargetEvent {
-                host: self.host,
-                target_op: Op::Unset,
-                target: self.target,
-                relation_id: RelationId::of::<R>(),
-            });
+            world.trigger_targets(
+                UnsetEvent::<R> {
+                    target: self.target,
+                    _phantom: PhantomData,
+                },
+                self.host,
+            );
         }
     }
 }
@@ -1288,5 +1302,10 @@ mod tests {
         world.entity_mut(test.center).set::<R>(e).unset::<R>(e);
 
         test.assert_cleaned(&world);
+    }
+
+    #[test]
+    fn scene_test() {
+        let mut world = World::new();
     }
 }

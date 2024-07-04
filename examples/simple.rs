@@ -38,7 +38,6 @@ fn exit(mut exit: EventWriter<AppExit>) {
 
 fn main() {
     App::new()
-        .add_plugins(Aery)
         .add_systems(Startup, setup)
         .add_systems(Update, (display_children, exit).chain())
         .run();

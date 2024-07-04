@@ -654,7 +654,6 @@ mod tests {
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
@@ -735,7 +734,6 @@ mod tests {
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
@@ -813,7 +811,6 @@ mod tests {
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }
@@ -892,7 +889,6 @@ mod tests {
         }
 
         App::new()
-            .add_plugins(Aery)
             .add_systems(Update, (init, run, test).chain())
             .run();
     }

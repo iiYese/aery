@@ -133,21 +133,15 @@
 //! }
 //!
 //! fn drop_item_from_inventory(
+//!     mut trigger: Trigger<UnsetEvent<Inventory>>,
 //!     mut commands: Commands,
-//!     mut events: EventReader<TargetEvent>,
 //!     characters: Query<&Pos, With<Character>>,
 //!     food: Query<Entity, With<Food>>,
 //! ) {
 //!     // Set an items position to the position of the character that last had the item
 //!     // in their inventory when they drop it.
-//!     for event in events
-//!         .read()
-//!         .filter(|event| event.matches(Wc, Op::Unset, Inventory, Wc))
-//!     {
-//!         let Ok(pos) = characters.get(event.target) else { return };
-//!         commands.entity(event.host).insert(*pos);
-//!     }
-//!
+//!     let Ok(pos) = characters.get(trigger.event().target) else { return };
+//!     commands.entity(trigger.entity()).insert(*pos);
 //! }
 //!
 //! #[derive(Relation)]
@@ -187,13 +181,8 @@
 //! }
 //! ```
 
-use bevy_app::{App, Plugin};
-use bevy_ecs::entity::Entity;
-
 #[allow(missing_docs)]
 pub mod edges;
-#[allow(missing_docs)]
-pub mod events;
 #[allow(missing_docs)]
 pub mod for_each;
 #[allow(missing_docs)]
@@ -205,67 +194,15 @@ pub mod scope;
 #[allow(missing_docs)]
 pub mod tuple_traits;
 
-use events::TargetEvent;
-
-/// A type to enable wildcard APIs
-pub enum Var<T> {
-    /// Sepcific value.
-    Val(T),
-    /// Wildcard. Will match anything.
-    Wc,
-}
-
-impl<T> Default for Var<T> {
-    fn default() -> Self {
-        Self::Wc
-    }
-}
-
-impl<T: PartialEq> PartialEq<T> for Var<T> {
-    fn eq(&self, other: &T) -> bool {
-        match self {
-            Self::Val(v) if v == other => true,
-            Self::Wc => true,
-            _ => false,
-        }
-    }
-}
-
-impl<T> From<Option<T>> for Var<T> {
-    fn from(value: Option<T>) -> Self {
-        match value {
-            Some(value) => Self::Val(value),
-            None => Self::Wc,
-        }
-    }
-}
-
-impl From<Entity> for Var<Entity> {
-    fn from(value: Entity) -> Self {
-        Self::Val(value)
-    }
-}
-
-/// Plugin that adds the resources and events created by aery.
-pub struct Aery;
-
-impl Plugin for Aery {
-    fn build(&self, app: &mut App) {
-        app.add_event::<TargetEvent>();
-    }
-}
-
 #[allow(missing_docs)]
 pub mod prelude {
     #[doc(no_inline)]
-    pub use super::{
-        Aery,
-        Var::{self, Wc},
-    };
     #[doc(no_inline)]
     pub use crate::{
-        edges::{Abstains, Branch, Leaf, Participates, RelationCommands, Root, Set, Unset},
-        events::{Op, TargetEvent},
+        edges::{
+            Abstains, Branch, Leaf, Participates, RelationCommands, Root, Set, SetEvent, Unset,
+            UnsetEvent,
+        },
         for_each::*,
         operations::{
             utils::{EdgeSide, Relations, Up},

@@ -71,7 +71,6 @@ fn main() {
             }),
             ..default()
         }))
-        .add_plugins(Aery)
         .add_systems(Startup, setup)
         .add_systems(Update, (input, draw))
         .run();
