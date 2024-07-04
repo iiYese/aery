@@ -17,11 +17,13 @@
 //!   - Spawning
 //!
 //! # API tour:
-//! Non exhaustive. Covers most common parts.
-//! ```
-//! // Modeling RPG mechanics that resemble TOTK:
-//! // - Items interacting with enviornment climate
-//! // - Powering connected devices
+//! Non exhaustive. Covers most common parts. It's modeling RPG mechanics resembling tears of the
+//! kingdom (please nintendo leave me along I beg).
+//!
+//! <details>
+//! <summary>Boiler plate</summary>
+//!
+//! ```ignore
 //! use bevy::prelude::*;
 //! use aery::prelude::*;
 //!
@@ -88,7 +90,14 @@
 //!
 //! #[derive(Component)]
 //! struct Apple;
+//! ```
 //!
+//! </details>
+//!
+//! <details>
+//! <summary>Modeling a player inventory (Making relations)</summary>
+//!
+//! ```ignore
 //! #[derive(Relation)]
 //! struct Inventory;
 //!
@@ -111,7 +120,14 @@
 //!     cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
 //!     cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
 //! }
+//! ```
 //!
+//! </details>
+//!
+//! <details>
+//! <summary>Making items respond to enviornment (Join operations)</summary>
+//!
+//! ```ignore
 //! fn tick_food(
 //!     mut characters: Query<((&Character, &Pos), Relations<Inventory>)>,
 //!     mut inventory_food: Query<&mut Food, Without<Pos>>,
@@ -131,7 +147,14 @@
 //!         });
 //!     }
 //! }
+//! ```
 //!
+//! </details>
+//!
+//! <details>
+//! <summary>Dropping inventory items into the world (Responding to relation changes)</summary>
+//!
+//! ```ignore
 //! fn drop_item_from_inventory(
 //!     mut trigger: Trigger<UnsetEvent<Inventory>>,
 //!     mut commands: Commands,
@@ -143,7 +166,23 @@
 //!     let Ok(pos) = characters.get(trigger.event().target) else { return };
 //!     commands.entity(trigger.entity()).insert(*pos);
 //! }
+//! ```
 //!
+//! </details>
+//!
+//! <details>
+//! <summary>Powering connected devices (Traversing relations & relation properties)</summary>
+//!
+//! ```ignore
+//! // This relation has a custom property. Properties can be overriden by supplying arguments to
+//! // the attribute macro. See the `Relation` trait & `CleanupPolicy` enum for more details.
+//! // - Symmetric: Makes relations symmetric. Setting A -R-> B also sets B -R-> A.
+//! // - Poly: Allows holding multiple relations of that type to different entities.
+//! //
+//! // There are also cleanup properties. Only one of these can be supplied to the attribute macro.
+//! // - Counted: Edge counted cleanup (eg. despawn a parent if all its children are despawned)
+//! // - Recursive: Recursively cleans up (eg. despawn all children of a parent with the parent)
+//! // - Total: Does both counted & recursive cleanup
 //! #[derive(Relation)]
 //! #[aery(Symmetric, Poly)]
 //! struct FuseJoint;
@@ -180,6 +219,8 @@
 //!     }
 //! }
 //! ```
+//!
+//! </details>
 
 #[allow(missing_docs)]
 pub mod edges;

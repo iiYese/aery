@@ -14,11 +14,14 @@ A plugin that adds a subset of Entity Relationship features to Bevy.
   - Spawning
 
 # API tour:
-Non exhaustive. Covers most common parts.
+Non exhaustive. Covers most common parts. It's modeling RPG mechanics resembling tears of the
+kingdom (please nintendo leave me along I beg).
+
+<details>
+<summary>Boiler plate</summary>
+
+
 ```rust
-// Modeling RPG mechanics that resemble TOTK:
-// - Items interacting with enviornment climate
-// - Powering connected devices
 use bevy::prelude::*;
 use aery::prelude::*;
 
@@ -85,7 +88,15 @@ impl Food {
 
 #[derive(Component)]
 struct Apple;
+```
 
+</details>
+
+<details>
+<summary>Modeling a player inventory (Making relations)</summary>
+
+
+```rust
 #[derive(Relation)]
 struct Inventory;
 
@@ -108,7 +119,15 @@ fn setup(mut cmds: Commands) {
     cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
     cmds.spawn((Food::Raw { freshness: 128. }, Apple)).set::<Inventory>(char);
 }
+```
 
+</details>
+
+<details>
+<summary>Making items respond to enviornment (Join operations)</summary>
+
+
+```rust
 fn tick_food(
     mut characters: Query<((&Character, &Pos), Relations<Inventory>)>,
     mut inventory_food: Query<&mut Food, Without<Pos>>,
@@ -128,25 +147,44 @@ fn tick_food(
         });
     }
 }
+```
 
+</details>
+
+<details>
+<summary>Dropping inventory items into the world (Responding to relation changes)</summary>
+
+
+```rust
 fn drop_item_from_inventory(
+    mut trigger: Trigger<UnsetEvent<Inventory>>,
     mut commands: Commands,
-    mut events: EventReader<TargetEvent>,
     characters: Query<&Pos, With<Character>>,
     food: Query<Entity, With<Food>>,
 ) {
     // Set an items position to the position of the character that last had the item
     // in their inventory when they drop it.
-    for event in events
-        .iter()
-        .filter(|event| event.matches(Wc, Op::Unset, Inventory, Wc))
-    {
-        let Ok(pos) = characters.get(event.target) else { return };
-        commands.entity(event.host).insert(*pos);
-    }
-
+    let Ok(pos) = characters.get(trigger.event().target) else { return };
+    commands.entity(trigger.entity()).insert(*pos);
 }
+```
 
+</details>
+
+<details>
+<summary>Powering connected devices (Traversing relations & relation properties)</summary>
+
+
+```rust
+// This relation has a custom property. Properties can be overriden by supplying arguments to
+// the attribute macro. See the `Relation` trait & `CleanupPolicy` enum for more details.
+// - Symmetric: Makes relations symmetric. Setting A -R-> B also sets B -R-> A.
+// - Poly: Allows holding multiple relations of that type to different entities.
+//
+// There are also cleanup properties. Only one of these can be supplied to the attribute macro.
+// - Counted: Edge counted cleanup (eg. despawn a parent if all its children are despawned)
+// - Recursive: Recursively cleans up (eg. despawn all children of a parent with the parent)
+// - Total: Does both counted & recursive cleanup
 #[derive(Relation)]
 #[aery(Symmetric, Poly)]
 struct FuseJoint;
@@ -184,9 +222,12 @@ fn tick_devices(
 }
 ```
 
+</details>
+
 ### Version table
 | Bevy version | Aery verison |
 |--------------|--------------|
+| 0.14         | 0.7          |
 | 0.13         | 0.6          |
 | 0.12         | 0.5          |
 | 0.11         | 0.3 - 0.4    |
