@@ -208,7 +208,7 @@ pub mod prelude {
             utils::{EdgeSide, Relations, Up},
             FoldBreadth, Join, Track, TrackSelf, Traverse,
         },
-        relation::{CleanupPolicy, Hierarchy, Relation, ZstOrPanic},
+        relation::{CleanupPolicy, Hierarchy, RegisterRelation, Relation, ZstOrPanic},
         scope::{AeryEntityCommandsExt, AeryEntityWorldMutExt},
         tuple_traits::{Joinable, RelationSet},
     };

@@ -1,5 +1,9 @@
 use core::any::TypeId;
 
+use crate::edges::{Hosts, Targets};
+use bevy_app::App;
+use bevy_ecs::{reflect::AppTypeRegistry, world::World};
+
 /// Type ID of a relation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RelationId(pub(crate) TypeId);
@@ -241,3 +245,39 @@ pub trait Relation: 'static + Sized + Send + Sync {
 /// }
 /// ```
 pub struct Hierarchy;
+
+/// Register relation for reflection
+/// ```
+/// use bevy::prelude::*;
+/// use aery::prelude::*;
+///
+/// #[derive(Relation)]
+/// struct R;
+///
+/// fn main() {
+///     App::new()
+///         .register_relation::<R>()
+///         // ..
+///         .run();
+/// }
+/// ```
+pub trait RegisterRelation {
+    fn register_relation<R: Relation>(&mut self) -> &mut Self;
+}
+
+impl RegisterRelation for World {
+    fn register_relation<R: Relation>(&mut self) -> &mut Self {
+        if let Some(registry) = self.get_resource_mut::<AppTypeRegistry>() {
+            registry.write().register::<Hosts<R>>();
+            registry.write().register::<Targets<R>>();
+        }
+        self
+    }
+}
+
+impl RegisterRelation for App {
+    fn register_relation<R: Relation>(&mut self) -> &mut Self {
+        self.world_mut().register_relation::<R>();
+        self
+    }
+}
