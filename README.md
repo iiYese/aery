@@ -18,7 +18,7 @@ Non exhaustive. Covers most common parts. It's modeling RPG mechanics resembling
 kingdom (please nintendo leave me along I beg).
 
 <details>
-<summary>Boiler plate</summary>
+<summary>Boilerplate</summary>
 
 
 ```rust
@@ -223,6 +223,21 @@ fn tick_devices(
 ```
 
 </details>
+
+<details>
+<summary>Reflecting relations</summary>
+
+```rust
+App::new()
+    // We just need to register the types for relfection.
+    .register_relation::<Inventory>()
+    .register_relation::<FuseJoint>()
+    // ..
+    .run();
+```
+
+</details>
+
 
 ### Version table
 | Bevy version | Aery verison |

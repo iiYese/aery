@@ -21,7 +21,7 @@
 //! kingdom (please nintendo leave me along I beg).
 //!
 //! <details>
-//! <summary>Boiler plate</summary>
+//! <summary>Boilerplate</summary>
 //!
 //! ```ignore
 //! use bevy::prelude::*;
@@ -218,6 +218,20 @@
 //!         });
 //!     }
 //! }
+//! ```
+//!
+//! </details>
+//!
+//! <details>
+//! <summary>Reflecting relations</summary>
+//!
+//! ```ignore
+//! App::new()
+//!     // We just need to register the types for relfection.
+//!     .register_relation::<Inventory>()
+//!     .register_relation::<FuseJoint>()
+//!     // ..
+//!     .run();
 //! ```
 //!
 //! </details>
