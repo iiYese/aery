@@ -157,7 +157,7 @@ fn tick_food(
 
 ```rust
 fn drop_item_from_inventory(
-    mut trigger: Trigger<UnsetEvent<Inventory>>,
+    trigger: Trigger<UnsetEvent<Inventory>>,
     mut commands: Commands,
     characters: Query<&Pos, With<Character>>,
     food: Query<Entity, With<Food>>,
