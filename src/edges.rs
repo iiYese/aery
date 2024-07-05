@@ -8,7 +8,7 @@ use bevy_ecs::{
     entity::{Entity, EntityMapper, MapEntities},
     event::Event,
     query::{AnyOf, Changed, Or, QueryData, QueryFilter, With, Without},
-    reflect::{AppTypeRegistry, ReflectComponent, ReflectMapEntities},
+    reflect::{ReflectComponent, ReflectMapEntities},
     system::EntityCommands,
     world::{Command, DeferredWorld, EntityWorldMut, World},
 };
@@ -784,7 +784,6 @@ mod tests {
     use crate::prelude::*;
     use bevy::prelude::*;
     use std::array::from_fn;
-    use std::{fs::File, io::Write};
 
     fn has_edges<R: Relation>(world: &World, entity: Entity) -> bool {
         world.get::<Hosts<R>>(entity).is_some() || world.get::<Targets<R>>(entity).is_some()
