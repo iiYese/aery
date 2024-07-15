@@ -211,9 +211,6 @@ pub trait Relation: 'static + Sized + Send + Sync {
 }
 
 /// For compatibility with bevy_hierarchy.
-/// **WARNING:**
-/// - Hierarchy cleanup does not clean aery relations.
-/// - Aery cleanup policies do not clean up hierarchy edges.
 /// ## Query example
 /// ```
 /// use bevy::prelude::*;
