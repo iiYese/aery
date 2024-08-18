@@ -15,7 +15,7 @@ A plugin that adds a subset of Entity Relationship features to Bevy.
 
 # API tour:
 Non exhaustive. Covers most common parts. It's modeling RPG mechanics resembling tears of the
-kingdom (please nintendo leave me along I beg).
+kingdom (please nintendo leave me alone I beg).
 
 <details>
 <summary>Boilerplate</summary>
