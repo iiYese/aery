@@ -83,7 +83,7 @@ impl<T> ZstOrPanic for T {}
 ///         (e5, true),
 ///         (e6, true)
 ///     ] {
-///         assert_eq!(world.get_entity(entity).is_some(), expected)
+///         assert_eq!(world.get_entity(entity).is_ok(), expected)
 ///     }
 /// }
 ///# use bevy::app::AppExit;

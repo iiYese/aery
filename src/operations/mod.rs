@@ -19,6 +19,7 @@ use utils::*;
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
+/// use aery::prelude::Up;
 ///
 /// #[derive(Component)]
 /// struct A;
@@ -379,6 +380,7 @@ where
 /// ```
 /// use bevy::prelude::*;
 /// use aery::prelude::*;
+/// use aery::prelude::Up;
 ///
 /// #[derive(Component)]
 /// struct Pos(Vec2);

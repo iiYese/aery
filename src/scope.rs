@@ -234,7 +234,7 @@ impl<R: Relation> CommandScope<'_, '_, '_, R> {
     /// Spawn an entity from a bundle and have it target the currently scoped entity via `R`.
     pub fn add(&mut self, bundle: impl Bundle) -> &mut Self {
         let id = self.cmds.spawn(bundle).id();
-        self.cmds.add(Set::<R>::new(id, self.top));
+        self.cmds.queue(Set::<R>::new(id, self.top));
         self.last = id;
         self
     }
@@ -242,7 +242,7 @@ impl<R: Relation> CommandScope<'_, '_, '_, R> {
     /// Spawn an entity from a bundle and set it as a target of the currently scoped entity.
     pub fn add_target(&mut self, bundle: impl Bundle) -> &mut Self {
         let id = self.cmds.spawn(bundle).id();
-        self.cmds.add(Set::<R>::new(self.top, id));
+        self.cmds.queue(Set::<R>::new(self.top, id));
         self.last = id;
         self
     }
@@ -256,7 +256,7 @@ impl<R: Relation> CommandScope<'_, '_, '_, R> {
             spawned.id()
         };
 
-        self.cmds.add(Set::<R>::new(id, self.top));
+        self.cmds.queue(Set::<R>::new(id, self.top));
         self.last = id;
         self
     }
@@ -273,7 +273,7 @@ impl<R: Relation> CommandScope<'_, '_, '_, R> {
             spawned.id()
         };
 
-        self.cmds.add(Set::<R>::new(self.top, id));
+        self.cmds.queue(Set::<R>::new(self.top, id));
         self.last = id;
         self
     }
