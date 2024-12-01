@@ -15,7 +15,7 @@ struct Pos(Vec2);
 struct ChildOf;
 
 fn setup(mut cmds: Commands) {
-    cmds.spawn(Camera2dBundle::default());
+    cmds.spawn(Camera2d);
 
     cmds.spawn(Pos(Vec2::new(0.0, 150.0)))
         .scope::<ChildOf>(|chld| {
@@ -45,8 +45,9 @@ fn input(
     nodes: Query<(Entity, &Pos)>,
 ) {
     let Some(cursor_pos) = windows
-        .single()
-        .cursor_position()
+        .get_single()
+        .ok()
+        .and_then(Window::cursor_position)
         .filter(|_| mouse_buttons.just_pressed(MouseButton::Left))
         .map(|pos| pos - WIN_SIZE / 2.)
         .map(|pos| Vec2::new(pos.x, -pos.y))
