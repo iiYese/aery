@@ -1332,6 +1332,35 @@ mod tests {
         assert_eq!(-1, world.entity_mut(target).get::<Counter>().unwrap().0);
     }
 
+    #[test]
+    fn observers_poly_symetric() {
+        #[derive(Component)]
+        struct Counter(i32);
+
+        #[derive(Relation)]
+        #[aery(Poly, Symmetric)]
+        struct R;
+
+        let mut world = World::new();
+        let target = world.spawn(Counter(0)).id();
+        let host = world
+            .spawn(Counter(0))
+            .observe(
+                |trigger: Trigger<SetEvent<R>>, mut counters: Query<&mut Counter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                    counters.get_mut(trigger.event().target).unwrap().0 -= 1;
+                },
+            )
+            .id();
+
+        world.flush();
+        world.entity_mut(host).set::<R>(target);
+        world.entity_mut(target).set::<R>(host);
+        world.flush();
+        assert_eq!(1, world.entity_mut(host).get::<Counter>().unwrap().0);
+        assert_eq!(-1, world.entity_mut(target).get::<Counter>().unwrap().0);
+    }
+
     #[derive(Component)]
     struct EventCounter(i32);
 
