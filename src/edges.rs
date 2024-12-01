@@ -39,7 +39,7 @@ impl<T: PartialEq> SSUVec<T> {
         }
     }
 
-    pub(crate) fn remove(&mut self, val: T) {
+    pub(crate) fn remove(&mut self, val: T) -> bool {
         if let Some(n) = self
             .vec
             .iter()
@@ -47,6 +47,9 @@ impl<T: PartialEq> SSUVec<T> {
             .find_map(|(n, item)| (*item == val).then_some(n))
         {
             self.vec.remove(n);
+            true
+        } else {
+            false
         }
     }
 }
@@ -433,7 +436,7 @@ where
 
         // Symmetric set has to happen before exclusivity unset otherwise
         // an entity can get despawned when it shouldn't.
-        if R::SYMMETRIC && !self.symmetric_action {
+        if (R::SYMMETRIC && R::EXCLUSIVE) && !self.symmetric_action {
             Command::apply(
                 Set::<R> {
                     host: self.target,
@@ -524,24 +527,25 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             .unwrap_or_default();
 
         // Remove edges from containers
-        host_targets.remove(self.target);
-        target_hosts.remove(self.host);
+        let target_removed_from_host = host_targets.remove(self.target);
 
-        let mut host_exists = false;
+        let host_removed_from_target = target_hosts.remove(self.host);
+
+        let mut host_entity_exists_in_world = false;
 
         if !host_targets.vec.vec.is_empty() {
             world.entity_mut(self.host).insert(host_targets);
-            host_exists = true;
+            host_entity_exists_in_world = true;
         } else if let Some(mut host) = world.get_entity_mut(self.host) {
-            host_exists = true;
+            host_entity_exists_in_world = true;
             host.remove::<Targets<R>>();
         }
 
-        let mut target_exists = false;
+        let mut target_entity_exists_in_world = false;
 
         if !target_hosts.vec.vec.is_empty() {
             world.entity_mut(self.target).insert(target_hosts);
-            target_exists = true;
+            target_entity_exists_in_world = true;
         } else if matches!(
             R::CLEANUP_POLICY,
             CleanupPolicy::Counted | CleanupPolicy::Total
@@ -554,17 +558,26 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 world.despawn(self.target);
             }
         } else if let Some(mut target) = world.get_entity_mut(self.target) {
-            target_exists = true;
+            target_entity_exists_in_world = true;
             target.remove::<Hosts<R>>();
         }
 
-        if host_exists && target_exists {
+        if target_removed_from_host && host_entity_exists_in_world {
             world.trigger_targets(
                 UnsetEvent::<R> {
                     target: self.target,
                     _phantom: PhantomData,
                 },
                 self.host,
+            );
+        }
+        if host_removed_from_target && target_entity_exists_in_world {
+            world.trigger_targets(
+                UnsetEvent::<R> {
+                    target: self.host,
+                    _phantom: PhantomData,
+                },
+                self.target,
             );
         }
     }
@@ -1317,5 +1330,156 @@ mod tests {
         world.flush();
         assert_eq!(1, world.entity_mut(host).get::<Counter>().unwrap().0);
         assert_eq!(-1, world.entity_mut(target).get::<Counter>().unwrap().0);
+    }
+
+    #[derive(Component)]
+    struct EventCounter(i32);
+
+    #[test]
+    fn unset_event_asymmetric_test() {
+        #[derive(Relation)]
+        struct AsymmetricR;
+
+        let mut world = World::new();
+
+        let target = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<AsymmetricR>>,
+                 mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        let host = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<AsymmetricR>>,
+                 mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        world.flush();
+
+        // Set the relation
+        world.entity_mut(host).set::<AsymmetricR>(target);
+        world.flush();
+
+        // Counters should not have changed yet
+        assert_eq!(0, world.entity(host).get::<EventCounter>().unwrap().0);
+        assert_eq!(0, world.entity(target).get::<EventCounter>().unwrap().0);
+
+        // Unset the relation
+        world.entity_mut(host).unset::<AsymmetricR>(target);
+        world.flush();
+
+        // Both entities should have their counters incremented
+        assert_eq!(1, world.entity(host).get::<EventCounter>().unwrap().0);
+        assert_eq!(1, world.entity(target).get::<EventCounter>().unwrap().0);
+    }
+
+    #[test]
+    fn unset_event_symmetric_test() {
+        #[derive(Relation)]
+        #[aery(Symmetric)]
+        struct SymmetricR;
+
+        let mut world = World::new();
+
+        let entity_a = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<SymmetricR>>,
+                 mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        let entity_b = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<SymmetricR>>,
+                 mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        world.flush();
+
+        // Set the symmetric relation
+        world.entity_mut(entity_a).set::<SymmetricR>(entity_b);
+        world.flush();
+
+        // Counters should not have changed yet
+        assert_eq!(0, world.entity(entity_a).get::<EventCounter>().unwrap().0);
+        assert_eq!(0, world.entity(entity_b).get::<EventCounter>().unwrap().0);
+
+        // Unset the relation
+        world.entity_mut(entity_a).unset::<SymmetricR>(entity_b);
+        world.flush();
+
+        // Both entities should have their counters incremented
+        assert_eq!(1, world.entity(entity_a).get::<EventCounter>().unwrap().0);
+        assert_eq!(1, world.entity(entity_b).get::<EventCounter>().unwrap().0);
+    }
+
+    #[test]
+    fn unset_event_poly_test() {
+        #[derive(Relation)]
+        #[aery(Poly)]
+        struct PolyR;
+
+        let mut world = World::new();
+
+        // Create two entities with EventCounter and observe UnsetEvent<PolyR>
+        let entity_a = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<PolyR>>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        let entity_b = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<PolyR>>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        world.flush();
+
+        // Since the relation is not symmetric, set relations individually
+        world.entity_mut(entity_a).set::<PolyR>(entity_b);
+        world.entity_mut(entity_b).set::<PolyR>(entity_a);
+        world.flush();
+
+        // Counters should not have changed yet
+        assert_eq!(0, world.entity(entity_a).get::<EventCounter>().unwrap().0);
+        assert_eq!(0, world.entity(entity_b).get::<EventCounter>().unwrap().0);
+
+        // Unset the relation from entity_a to entity_b
+        world.entity_mut(entity_a).unset::<PolyR>(entity_b);
+        world.flush();
+
+        // Only entity_a's counter should be incremented
+        assert_eq!(1, world.entity(entity_a).get::<EventCounter>().unwrap().0);
+        assert_eq!(1, world.entity(entity_b).get::<EventCounter>().unwrap().0);
+
+        // Unset the relation from entity_b to entity_a, this must not trigger any events
+        // because the relation is already unset
+        world.entity_mut(entity_b).unset::<PolyR>(entity_a);
+        world.flush();
+
+        assert_eq!(1, world.entity(entity_a).get::<EventCounter>().unwrap().0);
+        assert_eq!(1, world.entity(entity_b).get::<EventCounter>().unwrap().0);
     }
 }
