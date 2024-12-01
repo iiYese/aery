@@ -84,16 +84,16 @@ fn unset_relations(
         (Entity, &Transform, Relations<InRange>),
         (With<MovingEntity>, Participates<InRange>),
     >,
-    query_all: Query<(Entity, &Transform), With<MovingEntity>>,
+    moving_entities: Query<(Entity, &Transform), With<MovingEntity>>,
 ) {
     if time.elapsed_seconds() - *last_time >= 0.1 {
         *last_time = time.elapsed_seconds();
         for (entity_a, pos_a, relations) in in_range_participates.iter() {
-            let edges_iter = <InRange as EdgeSide>::entities(&relations);
-            for entity_b in edges_iter {
+            let edges_iter = relations.join::<InRange>(&moving_entities);
+            edges_iter.for_each(|(entity_b, _): (Entity, &Transform)| {
                 if entity_a != entity_b {
                     // Remove the relation if the entities are no longer in range.
-                    if let Ok((_, pos_b)) = query_all.get(entity_b) {
+                    if let Ok((_, pos_b)) = moving_entities.get(entity_b) {
                         let distance = pos_a.translation.distance(pos_b.translation);
                         if distance > 100.0 {
                             commands.entity(entity_a).unset::<InRange>(entity_b);
@@ -103,7 +103,7 @@ fn unset_relations(
                         commands.entity(entity_a).unset::<InRange>(entity_b);
                     }
                 }
-            }
+            });
         }
     }
 }
