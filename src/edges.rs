@@ -71,11 +71,11 @@ pub(crate) fn unset_edges<R: Relation>(mut world: DeferredWorld, id: Entity, _: 
     let mut cmds = world.commands();
 
     for host in hosts.iter().copied() {
-        cmds.add(UnsetAsymmetric::<R>::buffered(host, id));
+        cmds.queue(UnsetAsymmetric::<R>::buffered(host, id));
     }
 
     for target in targets.iter().copied() {
-        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
+        cmds.queue(UnsetAsymmetric::<R>::buffered(id, target));
     }
 }
 
@@ -96,13 +96,13 @@ pub(crate) fn clean_recursive<R: Relation>(mut world: DeferredWorld, id: Entity,
     let mut cmds = world.commands();
 
     for host in hosts.iter().copied() {
-        cmds.add(move |world: &mut World| {
+        cmds.queue(move |world: &mut World| {
             world.despawn(host);
         });
     }
 
     for target in targets.iter().copied() {
-        cmds.add(UnsetAsymmetric::<R>::buffered(id, target));
+        cmds.queue(UnsetAsymmetric::<R>::buffered(id, target));
     }
 }
 
@@ -381,7 +381,7 @@ where
             return;
         }
 
-        if world.get_entity(self.target).is_none() {
+        if world.get_entity(self.target).is_err() {
             warn!(
                 "{host:?} tried to target {target:?} with {rel}. \
                 {target:?} does not exist. \
@@ -393,7 +393,7 @@ where
             return;
         }
 
-        if world.get_entity(self.host).is_none() {
+        if world.get_entity(self.host).is_err() {
             warn!(
                 "{host:?} tried to target {target:?} with {rel}. \
                 {host:?} does not exist. \
@@ -551,14 +551,14 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             CleanupPolicy::Counted | CleanupPolicy::Total
         ) {
             if self.buffered {
-                world.commands().add(move |world: &mut World| {
+                world.commands().queue(move |world: &mut World| {
                     world.despawn(self.target);
                 });
             } else {
                 world.despawn(self.target);
             }
         } else if let Some(mut target) = world.get_entity_mut(self.target) {
-            target_entity_exists_in_world = true;
+            target_exists = true;
             target.remove::<Hosts<R>>();
         }
 
@@ -751,7 +751,7 @@ impl RelationCommands for EntityCommands<'_> {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
-        self.commands().add(Set::<R>::new(id, target));
+        self.commands().queue(Set::<R>::new(id, target));
         self
     }
 
@@ -759,7 +759,7 @@ impl RelationCommands for EntityCommands<'_> {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
-        self.commands().add(Unset::<R> {
+        self.commands().queue(Unset::<R> {
             host: id,
             target,
             _phantom: PhantomData,
@@ -771,7 +771,7 @@ impl RelationCommands for EntityCommands<'_> {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
-        self.commands().add(UnsetAll::<R> {
+        self.commands().queue(UnsetAll::<R> {
             entity: id,
             _phantom: PhantomData,
         });
@@ -782,7 +782,7 @@ impl RelationCommands for EntityCommands<'_> {
         let _ = R::ZST_OR_PANIC;
 
         let id = self.id();
-        self.commands().add(Withdraw::<R> {
+        self.commands().queue(Withdraw::<R> {
             entity: id,
             _phantom: PhantomData,
         });
@@ -989,7 +989,7 @@ mod tests {
         }
 
         fn assert_cleaned(&self, world: &World) {
-            assert!(world.get_entity(self.center).is_none());
+            assert!(world.get_entity(self.center).is_err());
 
             assert!(
                 !(has_edges::<Orphan>(world, self.hosts.orphan)
@@ -1006,7 +1006,7 @@ mod tests {
             assert!(!is_participant::<Orphan>(world, self.hosts.orphan));
             assert!(!is_root::<Orphan>(world, self.targets.orphan));
 
-            assert!(world.get_entity(self.targets.counted).is_none());
+            assert!(world.get_entity(self.targets.counted).is_err());
             assert!(
                 !(has_edges::<Orphan>(world, self.hosts.counted)
                     || has_edges::<Counted>(world, self.hosts.counted)
@@ -1015,7 +1015,7 @@ mod tests {
             );
             assert!(!is_participant::<Counted>(world, self.hosts.counted,));
 
-            assert!(world.get_entity(self.hosts.recursive).is_none());
+            assert!(world.get_entity(self.hosts.recursive).is_err());
             assert!(
                 !(has_edges::<Orphan>(world, self.targets.recursive)
                     || has_edges::<Counted>(world, self.targets.recursive)
@@ -1024,8 +1024,8 @@ mod tests {
             );
             assert!(!is_root::<Recursive>(world, self.targets.recursive));
 
-            assert!(world.get_entity(self.hosts.total).is_none());
-            assert!(world.get_entity(self.targets.total).is_none());
+            assert!(world.get_entity(self.hosts.total).is_err());
+            assert!(world.get_entity(self.targets.total).is_err());
         }
     }
 
