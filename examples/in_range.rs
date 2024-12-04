@@ -44,7 +44,7 @@ fn setup(mut commands: Commands) {
 fn move_entities(mut query: Query<(&mut Transform, &mut MovingEntity)>, time: Res<Time>) {
     for (mut transform, mut moving_entity) in query.iter_mut() {
         // Update the position based on direction and elapsed time.
-        transform.translation.x += moving_entity.direction * time.delta_seconds() * 50.0;
+        transform.translation.x += moving_entity.direction * time.delta_secs() * 50.0;
 
         // Reverse direction if the entity moves beyond the bounds.
         if transform.translation.x > 200.0 || transform.translation.x < -200.0 {
@@ -60,8 +60,8 @@ fn set_relations(
     in_range_abstains: Query<(Entity, &Transform), (With<MovingEntity>, Abstains<InRange>)>,
     query_all: Query<(Entity, &Transform), With<MovingEntity>>,
 ) {
-    if time.elapsed_seconds() - *last_time >= 0.1 {
-        *last_time = time.elapsed_seconds();
+    if time.elapsed_secs() - *last_time >= 0.1 {
+        *last_time = time.elapsed_secs();
         for (entity_a, pos_a) in in_range_abstains.iter() {
             for (entity_b, pos_b) in query_all.iter() {
                 if entity_a != entity_b {
@@ -86,8 +86,8 @@ fn unset_relations(
     >,
     moving_entities: Query<(Entity, &Transform), With<MovingEntity>>,
 ) {
-    if time.elapsed_seconds() - *last_time >= 0.1 {
-        *last_time = time.elapsed_seconds();
+    if time.elapsed_secs() - *last_time >= 0.1 {
+        *last_time = time.elapsed_secs();
         for (entity_a, pos_a, relations) in in_range_participates.iter() {
             let edges_iter = relations.join::<InRange>(&moving_entities);
             edges_iter.for_each(|(entity_b, _): (Entity, &Transform)| {
@@ -127,8 +127,8 @@ impl Plugin for InRangePlugin {
     fn build(&self, app: &mut App) {
         app.register_relation::<InRange>();
         app.add_systems(Update, (set_relations, unset_relations));
-        app.observe(relation_set);
-        app.observe(relation_remove);
+        app.add_observer(relation_set);
+        app.add_observer(relation_remove);
     }
 }
 

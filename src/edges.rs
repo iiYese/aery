@@ -536,7 +536,7 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
         if !host_targets.vec.vec.is_empty() {
             world.entity_mut(self.host).insert(host_targets);
             host_entity_exists_in_world = true;
-        } else if let Some(mut host) = world.get_entity_mut(self.host) {
+        } else if let Ok(mut host) = world.get_entity_mut(self.host) {
             host_entity_exists_in_world = true;
             host.remove::<Targets<R>>();
         }
@@ -557,8 +557,8 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             } else {
                 world.despawn(self.target);
             }
-        } else if let Some(mut target) = world.get_entity_mut(self.target) {
-            target_exists = true;
+        } else if let Ok(mut target) = world.get_entity_mut(self.target) {
+            target_entity_exists_in_world = true;
             target.remove::<Hosts<R>>();
         }
 
