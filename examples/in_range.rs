@@ -1,3 +1,4 @@
+use aery::prelude::Up;
 use aery::prelude::*;
 use bevy::log;
 use bevy::prelude::*;
@@ -80,16 +81,13 @@ fn unset_relations(
     mut commands: Commands,
     time: Res<Time>,
     mut last_time: Local<f32>,
-    in_range_participates: Query<
-        (Entity, &Transform, Relations<InRange>),
-        (With<MovingEntity>, Participates<InRange>),
-    >,
+    in_range_participates: Query<(Entity, &Transform, Relations<InRange>), With<MovingEntity>>,
     moving_entities: Query<(Entity, &Transform), With<MovingEntity>>,
 ) {
     if time.elapsed_secs() - *last_time >= 0.1 {
         *last_time = time.elapsed_secs();
         for (entity_a, pos_a, relations) in in_range_participates.iter() {
-            let edges_iter = relations.join::<InRange>(&moving_entities);
+            let edges_iter = relations.join::<Up<InRange>>(&moving_entities);
             edges_iter.for_each(|(entity_b, _): (Entity, &Transform)| {
                 if entity_a != entity_b {
                     // Remove the relation if the entities are no longer in range.
@@ -108,18 +106,34 @@ fn unset_relations(
     }
 }
 
-fn relation_set(set: Trigger<SetEvent<InRange>>) {
+fn relation_set(set: Trigger<SetEvent<InRange>>, names: Query<&Name>) {
     // Do something when a new "InRange" relationship is established.
     let first = set.entity();
     let second = set.event().target;
-    log::info!("{} is now in range of {}", first, second);
+    let first_name = names.get(first).unwrap();
+    let second_name = names.get(second).unwrap();
+    log::info!(
+        "{}({}) is now in range of {}({})",
+        first_name,
+        first,
+        second_name,
+        second
+    );
 }
 
-fn relation_remove(unset: Trigger<UnsetEvent<InRange>>) {
+fn relation_remove(unset: Trigger<UnsetEvent<InRange>>, names: Query<&Name>) {
     // Do something when an "InRange" relationship is removed.
     let first = unset.entity();
     let second = unset.event().target;
-    log::info!("{} is no longer in range of {}", first, second);
+    let first_name = names.get(first).unwrap();
+    let second_name = names.get(second).unwrap();
+    log::info!(
+        "{}({}) is no longer in range of {}({})",
+        first_name,
+        first,
+        second_name,
+        second
+    );
 }
 
 pub struct InRangePlugin;
