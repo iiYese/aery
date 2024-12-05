@@ -2,40 +2,30 @@ use aery::prelude::Up;
 use aery::prelude::*;
 use bevy::log;
 use bevy::prelude::*;
-use std::fmt::Display;
 
 #[derive(Component)]
 struct MovingEntity {
     direction: f32, // Movement direction along the x-axis, positive or negative.
 }
 
-#[derive(Component)]
-struct Name(&'static str);
-
-impl Display for Name {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.0)
-    }
-}
-
 // Define a relationship where multiple entities can be linked non-exclusively.
 // Symmetry is not set in this example, it may arise from the implementation,
 // when we set Poly relation from both sides.
-// But adding the aery `Symmetric` attribute to the struct would enforce it, and MUST show same results.
 #[derive(Relation, Component)]
 #[aery(Poly)]
 struct InRange;
+const RANGE_THRESHOLD: f32 = 100.0;
 
 fn setup(mut commands: Commands) {
     // Spawning two moving entities with initial positions and directions.
     commands.spawn((
-        Name("Alice"),
+        Name::new("Alice"),
         MovingEntity { direction: 1.0 },
         Transform::from_xyz(-150.0, 0.0, 0.0),
         GlobalTransform::default(),
     ));
     commands.spawn((
-        Name("Bob"),
+        Name::new("Bob"),
         MovingEntity { direction: -1.0 },
         Transform::from_xyz(150.0, 0.0, 0.0),
         GlobalTransform::default(),
@@ -61,20 +51,21 @@ fn set_relations(
     in_range_abstains: Query<(Entity, &Transform), (With<MovingEntity>, Abstains<InRange>)>,
     query_all: Query<(Entity, &Transform), With<MovingEntity>>,
 ) {
-    if time.elapsed_secs() - *last_time >= 0.1 {
-        *last_time = time.elapsed_secs();
-        for (entity_a, pos_a) in in_range_abstains.iter() {
-            for (entity_b, pos_b) in query_all.iter() {
-                if entity_a != entity_b {
-                    // Add the "InRange" relation if the distance is within the threshold.
-                    let distance = pos_a.translation.distance(pos_b.translation);
-                    if distance <= 100.0 {
-                        commands.entity(entity_a).set::<InRange>(entity_b);
-                    }
-                }
-            }
-        }
+    if time.elapsed_secs() - *last_time < 0.1 {
+        return;
     }
+    *last_time = time.elapsed_secs();
+
+    in_range_abstains.iter().for_each(|(entity_a, pos_a)| {
+        query_all.iter().for_each(|(entity_b, pos_b)| {
+            if entity_a != entity_b
+                && pos_a.translation.distance(pos_b.translation) <= RANGE_THRESHOLD
+            {
+                // Set the relation if the entities are in range.
+                commands.entity(entity_a).set::<InRange>(entity_b);
+            }
+        });
+    });
 }
 
 fn unset_relations(
@@ -84,26 +75,28 @@ fn unset_relations(
     in_range_participates: Query<(Entity, &Transform, Relations<InRange>), With<MovingEntity>>,
     moving_entities: Query<(Entity, &Transform), With<MovingEntity>>,
 ) {
-    if time.elapsed_secs() - *last_time >= 0.1 {
-        *last_time = time.elapsed_secs();
-        for (entity_a, pos_a, relations) in in_range_participates.iter() {
-            let edges_iter = relations.join::<Up<InRange>>(&moving_entities);
-            edges_iter.for_each(|(entity_b, _): (Entity, &Transform)| {
-                if entity_a != entity_b {
-                    // Remove the relation if the entities are no longer in range.
-                    if let Ok((_, pos_b)) = moving_entities.get(entity_b) {
-                        let distance = pos_a.translation.distance(pos_b.translation);
-                        if distance > 100.0 {
-                            commands.entity(entity_a).unset::<InRange>(entity_b);
-                        }
-                    } else {
-                        // Unset in case the target entity no longer exists.
-                        commands.entity(entity_a).unset::<InRange>(entity_b);
-                    }
-                }
-            });
-        }
+    if time.elapsed_secs() - *last_time < 0.1 {
+        return;
     }
+    *last_time = time.elapsed_secs();
+
+    in_range_participates
+        .iter()
+        .for_each(|(entity_a, pos_a, relations)| {
+            relations.join::<Up<InRange>>(&moving_entities).for_each(
+                |(entity_b, _): (Entity, &Transform)| {
+                    if entity_a != entity_b {
+                        // Remove the relation if the entities are no longer in range.
+                        if let Ok((_, pos_b)) = moving_entities.get(entity_b) {
+                            let distance = pos_a.translation.distance(pos_b.translation);
+                            if distance > RANGE_THRESHOLD {
+                                commands.entity(entity_a).unset::<InRange>(entity_b);
+                            }
+                        }
+                    }
+                },
+            );
+        });
 }
 
 fn relation_set(set: Trigger<SetEvent<InRange>>, names: Query<&Name>) {
