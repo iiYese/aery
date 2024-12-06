@@ -39,7 +39,7 @@ impl<T: PartialEq> SSUVec<T> {
         }
     }
 
-    pub(crate) fn remove(&mut self, val: T) {
+    pub(crate) fn remove(&mut self, val: T) -> bool {
         if let Some(n) = self
             .vec
             .iter()
@@ -47,6 +47,9 @@ impl<T: PartialEq> SSUVec<T> {
             .find_map(|(n, item)| (*item == val).then_some(n))
         {
             self.vec.remove(n);
+            true
+        } else {
+            false
         }
     }
 }
@@ -402,26 +405,38 @@ where
             return;
         }
 
-        // add target
-        let mut host_targets = world
-            .entity_mut(self.host)
-            .get_mut::<Targets<R>>()
-            .map(|mut targets| std::mem::take(&mut *targets))
-            .unwrap_or_default();
+        let mut old: Option<Entity> = None;
 
-        let old = host_targets.vec.vec.first().copied();
-        host_targets.add(self.target);
-        world.entity_mut(self.host).insert(host_targets);
+        let mut host_entity = world.entity_mut(self.host);
+        if let Some(mut host_targets) = host_entity.get_mut::<Targets<R>>() {
+            // Check if this target is already present
+            if host_targets.vec.vec.contains(&self.target) {
+                return;
+            } else {
+                old = host_targets.vec.vec.first().copied();
+                host_targets.add(self.target);
+            }
+        } else {
+            // If Targets<R> doesn't exist on the host, create and insert a new one
+            let mut new_host_targets = Targets::<R>::default();
+            new_host_targets.add(self.target);
+            host_entity.insert(new_host_targets);
+        }
 
-        // add host
-        let mut target_hosts = world
-            .entity_mut(self.target)
-            .get_mut::<Hosts<R>>()
-            .map(|mut hosts| std::mem::take(&mut *hosts))
-            .unwrap_or_default();
-
-        target_hosts.vec.add(self.host);
-        world.entity_mut(self.target).insert(target_hosts);
+        let mut target_entity = world.entity_mut(self.target);
+        if let Some(mut target_hosts) = target_entity.get_mut::<Hosts<R>>() {
+            // Check if this host is already present
+            if target_hosts.vec.vec.contains(&self.host) {
+                return;
+            } else {
+                target_hosts.vec.add(self.host);
+            }
+        } else {
+            // If Hosts<R> doesn't exist on the target, create and insert a new one
+            let mut new_target_hosts = Hosts::<R>::default();
+            new_target_hosts.vec.add(self.host);
+            target_entity.insert(new_target_hosts);
+        }
 
         world.trigger_targets(
             SetEvent::<R> {
@@ -523,25 +538,33 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
 
-        // Remove edges from containers
-        host_targets.remove(self.target);
-        target_hosts.remove(self.host);
+        let target_has_host_as_target = if let Some(targets) = world.get::<Targets<R>>(self.target)
+        {
+            targets.vec.vec.contains(&self.host)
+        } else {
+            false
+        };
 
-        let mut host_exists = false;
+        // Remove edges from containers
+        let target_removed_from_host = host_targets.remove(self.target);
+
+        let host_removed_from_target = target_hosts.remove(self.host);
+
+        let mut host_entity_exists_in_world = false;
 
         if !host_targets.vec.vec.is_empty() {
             world.entity_mut(self.host).insert(host_targets);
-            host_exists = true;
+            host_entity_exists_in_world = true;
         } else if let Ok(mut host) = world.get_entity_mut(self.host) {
-            host_exists = true;
+            host_entity_exists_in_world = true;
             host.remove::<Targets<R>>();
         }
 
-        let mut target_exists = false;
+        let mut target_entity_exists_in_world = false;
 
         if !target_hosts.vec.vec.is_empty() {
             world.entity_mut(self.target).insert(target_hosts);
-            target_exists = true;
+            target_entity_exists_in_world = true;
         } else if matches!(
             R::CLEANUP_POLICY,
             CleanupPolicy::Counted | CleanupPolicy::Total
@@ -554,11 +577,11 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 world.despawn(self.target);
             }
         } else if let Ok(mut target) = world.get_entity_mut(self.target) {
-            target_exists = true;
+            target_entity_exists_in_world = true;
             target.remove::<Hosts<R>>();
         }
 
-        if host_exists && target_exists {
+        if target_removed_from_host && host_entity_exists_in_world {
             world.trigger_targets(
                 UnsetEvent::<R> {
                     target: self.target,
@@ -566,6 +589,19 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 },
                 self.host,
             );
+        }
+        // Need to check situation if !R::EXCLUSIVE - it is possible that the target also has us as target, so we need to send event
+        // to the target also
+        if host_removed_from_target && target_entity_exists_in_world {
+            if (R::SYMMETRIC && R::EXCLUSIVE) || (!R::EXCLUSIVE && target_has_host_as_target) {
+                world.trigger_targets(
+                    UnsetEvent::<R> {
+                        target: self.host,
+                        _phantom: PhantomData,
+                    },
+                    self.target,
+                );
+            }
         }
     }
 }
@@ -1291,31 +1327,240 @@ mod tests {
 
         test.assert_cleaned(&world);
     }
+    #[derive(Component)]
+    struct EventCounter(i32);
 
-    #[test]
-    fn observers() {
-        #[derive(Component)]
-        struct Counter(i32);
+    #[derive(Relation)]
+    struct AsymmetricRelation;
 
-        #[derive(Relation)]
-        struct R;
+    #[derive(Relation)]
+    #[aery(Symmetric)]
+    struct SymmetricRelation;
 
-        let mut world = World::new();
-        let target = world.spawn(Counter(0)).id();
-        let host = world
-            .spawn(Counter(0))
+    #[derive(Relation)]
+    #[aery(Poly)]
+    struct PolyRelation;
+
+    #[derive(Relation)]
+    #[aery(Poly, Symmetric)]
+    struct PolySymmetricRelation;
+
+    enum RelationType {
+        Asymmetric,
+        Symmetric,
+        Poly,
+        PolySymmetric,
+    }
+
+    fn test_unset_event<R: Relation>(
+        world: &mut World,
+        relation_name: &str,
+        set_both_ways: bool,
+        expected_counter_a: i32,
+        expected_counter_b: i32,
+    ) {
+        // Spawn two entities with EventCounter and observe UnsetEvent<R>
+        let entity_a = world
+            .spawn(EventCounter(0))
             .observe(
-                |trigger: Trigger<SetEvent<R>>, mut counters: Query<&mut Counter>| {
+                |trigger: Trigger<UnsetEvent<R>>, mut counters: Query<&mut EventCounter>| {
                     counters.get_mut(trigger.entity()).unwrap().0 += 1;
-                    counters.get_mut(trigger.event().target).unwrap().0 -= 1;
+                },
+            )
+            .id();
+
+        let entity_b = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<UnsetEvent<R>>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
                 },
             )
             .id();
 
         world.flush();
-        world.entity_mut(host).set::<R>(target);
+
+        // Set the relation(s)
+        world.entity_mut(entity_a).set::<R>(entity_b);
+        if set_both_ways {
+            world.entity_mut(entity_b).set::<R>(entity_a);
+        }
+
         world.flush();
-        assert_eq!(1, world.entity_mut(host).get::<Counter>().unwrap().0);
-        assert_eq!(-1, world.entity_mut(target).get::<Counter>().unwrap().0);
+
+        // Unset the relation from entity_a to entity_b
+        world.entity_mut(entity_a).unset::<R>(entity_b);
+        world.flush();
+
+        // Check counters
+        let counter_a = world.get::<EventCounter>(entity_a).unwrap().0;
+        let counter_b = world.get::<EventCounter>(entity_b).unwrap().0;
+
+        assert_eq!(
+            counter_a, expected_counter_a,
+            "{}: Unexpected counter value for entity_a",
+            relation_name
+        );
+        assert_eq!(
+            counter_b, expected_counter_b,
+            "{}: Unexpected counter value for entity_b",
+            relation_name
+        );
+    }
+
+    #[test]
+    fn test_unset_events_for_relations() {
+        let mut world = World::new();
+
+        // Register relations
+        world.register_relation::<AsymmetricRelation>();
+        world.register_relation::<SymmetricRelation>();
+        world.register_relation::<PolyRelation>();
+        world.register_relation::<PolySymmetricRelation>();
+
+        // Test cases: (RelationType, set_both_ways, expected counters after unset)
+        let test_cases = vec![
+            (RelationType::Asymmetric, false, 1, 0),
+            (RelationType::Symmetric, false, 1, 1),
+            (RelationType::Poly, true, 1, 1),
+            (RelationType::PolySymmetric, true, 1, 1),
+        ];
+
+        for (relation_type, set_both_ways, expected_a, expected_b) in test_cases {
+            match relation_type {
+                RelationType::Asymmetric => test_unset_event::<AsymmetricRelation>(
+                    &mut world,
+                    "AsymmetricRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+                RelationType::Symmetric => test_unset_event::<SymmetricRelation>(
+                    &mut world,
+                    "SymmetricRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+                RelationType::Poly => test_unset_event::<PolyRelation>(
+                    &mut world,
+                    "PolyRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+                RelationType::PolySymmetric => test_unset_event::<PolySymmetricRelation>(
+                    &mut world,
+                    "PolySymmetricRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+            }
+        }
+    }
+    fn test_set_event<R: Relation>(
+        world: &mut World,
+        relation_name: &str,
+        set_both_ways: bool,
+        expected_counter_a: i32,
+        expected_counter_b: i32,
+    ) {
+        // Spawn two entities with EventCounter and observe SetEvent<R>
+        let entity_a = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<SetEvent<R>>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        let entity_b = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<SetEvent<R>>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
+
+        world.flush();
+
+        // Set the relation(s)
+        world.entity_mut(entity_a).set::<R>(entity_b);
+        if set_both_ways {
+            world.entity_mut(entity_b).set::<R>(entity_a);
+        }
+
+        world.flush();
+
+        // Check counters
+        let counter_a = world.get::<EventCounter>(entity_a).unwrap().0;
+        let counter_b = world.get::<EventCounter>(entity_b).unwrap().0;
+
+        assert_eq!(
+            counter_a, expected_counter_a,
+            "{}: Unexpected counter value for entity_a",
+            relation_name
+        );
+        assert_eq!(
+            counter_b, expected_counter_b,
+            "{}: Unexpected counter value for entity_b",
+            relation_name
+        );
+    }
+
+    #[test]
+    fn test_set_events_for_relations() {
+        // Create a new world for each test case to avoid state carry-over
+        let mut world = World::new();
+
+        // Register relations
+        world.register_relation::<AsymmetricRelation>();
+        world.register_relation::<SymmetricRelation>();
+        world.register_relation::<PolyRelation>();
+        world.register_relation::<PolySymmetricRelation>();
+
+        // Test cases: (RelationType, set_both_ways, expected_counter_a, expected_counter_b)
+        let test_cases = vec![
+            (RelationType::Asymmetric, false, 1, 0),
+            (RelationType::Symmetric, false, 1, 1),
+            (RelationType::Poly, true, 1, 1),
+            (RelationType::PolySymmetric, true, 1, 1),
+        ];
+
+        for (relation_type, set_both_ways, expected_a, expected_b) in test_cases {
+            match relation_type {
+                RelationType::Asymmetric => test_set_event::<AsymmetricRelation>(
+                    &mut world,
+                    "AsymmetricRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+                RelationType::Symmetric => test_set_event::<SymmetricRelation>(
+                    &mut world,
+                    "SymmetricRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+                RelationType::Poly => test_set_event::<PolyRelation>(
+                    &mut world,
+                    "PolyRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+                RelationType::PolySymmetric => test_set_event::<PolySymmetricRelation>(
+                    &mut world,
+                    "PolySymmetricRelation",
+                    set_both_ways,
+                    expected_a,
+                    expected_b,
+                ),
+            }
+        }
     }
 }
