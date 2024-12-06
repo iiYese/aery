@@ -413,7 +413,6 @@ where
             if host_targets.vec.vec.contains(&self.target) {
                 return;
             } else {
-                // Take the current Targets<R> value, modify it, and then reinsert it
                 old = host_targets.vec.vec.first().copied();
                 host_targets.add(self.target);
             }
