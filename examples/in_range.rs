@@ -11,7 +11,7 @@ struct MovingEntity {
 // Define a relationship where multiple entities can be linked non-exclusively.
 // Symmetry is not set in this example, it may arise from the implementation,
 // when we set Poly relation from both sides.
-#[derive(Relation, Component)]
+#[derive(Relation)]
 #[aery(Poly)]
 struct InRange;
 const RANGE_THRESHOLD: f32 = 100.0;

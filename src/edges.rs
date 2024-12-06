@@ -405,26 +405,44 @@ where
             return;
         }
 
-        // add target
-        let mut host_targets = world
-            .entity_mut(self.host)
-            .get_mut::<Targets<R>>()
-            .map(|mut targets| std::mem::take(&mut *targets))
-            .unwrap_or_default();
+        let mut old: Option<Entity> = None;
 
-        let old = host_targets.vec.vec.first().copied();
-        host_targets.add(self.target);
-        world.entity_mut(self.host).insert(host_targets);
+        let mut host_entity = world.entity_mut(self.host);
+        if let Some(mut host_targets) = host_entity.get_mut::<Targets<R>>() {
+            // Check if this target is already present
+            if host_targets.vec.vec.contains(&self.target) {
+                return;
+            } else {
+                // Take the current Targets<R> value, modify it, and then reinsert it
+                let mut new_host_targets = std::mem::take(&mut *host_targets);
+                old = new_host_targets.vec.vec.first().copied();
+                new_host_targets.add(self.target);
+                *host_targets = new_host_targets;
+            }
+        } else {
+            // If Targets<R> doesn't exist on the host, create and insert a new one
+            let mut new_host_targets = Targets::<R>::default();
+            new_host_targets.add(self.target);
+            host_entity.insert(new_host_targets);
+        }
 
-        // add host
-        let mut target_hosts = world
-            .entity_mut(self.target)
-            .get_mut::<Hosts<R>>()
-            .map(|mut hosts| std::mem::take(&mut *hosts))
-            .unwrap_or_default();
-
-        target_hosts.vec.add(self.host);
-        world.entity_mut(self.target).insert(target_hosts);
+        let mut target_entity = world.entity_mut(self.target);
+        if let Some(mut target_hosts) = target_entity.get_mut::<Hosts<R>>() {
+            // Check if this host is already present
+            if target_hosts.vec.vec.contains(&self.host) {
+                return;
+            } else {
+                // Take the current Hosts<R> value, modify it, and then reinsert it
+                let mut new_target_hosts = std::mem::take(&mut *target_hosts);
+                new_target_hosts.vec.add(self.host);
+                *target_hosts = new_target_hosts;
+            }
+        } else {
+            // If Hosts<R> doesn't exist on the target, create and insert a new one
+            let mut new_target_hosts = Hosts::<R>::default();
+            new_target_hosts.vec.add(self.host);
+            target_entity.insert(new_target_hosts);
+        }
 
         world.trigger_targets(
             SetEvent::<R> {
@@ -436,7 +454,7 @@ where
 
         // Symmetric set has to happen before exclusivity unset otherwise
         // an entity can get despawned when it shouldn't.
-        if (R::SYMMETRIC && R::EXCLUSIVE) && !self.symmetric_action {
+        if R::SYMMETRIC && !self.symmetric_action {
             Command::apply(
                 Set::<R> {
                     host: self.target,
