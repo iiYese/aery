@@ -414,10 +414,8 @@ where
                 return;
             } else {
                 // Take the current Targets<R> value, modify it, and then reinsert it
-                let mut new_host_targets = std::mem::take(&mut *host_targets);
-                old = new_host_targets.vec.vec.first().copied();
-                new_host_targets.add(self.target);
-                *host_targets = new_host_targets;
+                old = host_targets.vec.vec.first().copied();
+                host_targets.add(self.target);
             }
         } else {
             // If Targets<R> doesn't exist on the host, create and insert a new one
@@ -432,10 +430,7 @@ where
             if target_hosts.vec.vec.contains(&self.host) {
                 return;
             } else {
-                // Take the current Hosts<R> value, modify it, and then reinsert it
-                let mut new_target_hosts = std::mem::take(&mut *target_hosts);
-                new_target_hosts.vec.add(self.host);
-                *target_hosts = new_target_hosts;
+                target_hosts.vec.add(self.host);
             }
         } else {
             // If Hosts<R> doesn't exist on the target, create and insert a new one
