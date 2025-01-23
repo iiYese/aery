@@ -39,7 +39,7 @@ impl<T: PartialEq> SSUVec<T> {
         }
     }
 
-    pub(crate) fn remove(&mut self, val: T) -> bool {
+    pub(crate) fn remove(&mut self, val: T) {
         if let Some(n) = self
             .vec
             .iter()
@@ -47,9 +47,6 @@ impl<T: PartialEq> SSUVec<T> {
             .find_map(|(n, item)| (*item == val).then_some(n))
         {
             self.vec.remove(n);
-            true
-        } else {
-            false
         }
     }
 }
@@ -158,8 +155,21 @@ impl<R: Relation> Component for Hosts<R> {
     const STORAGE_TYPE: StorageType = StorageType::Table;
     fn register_component_hooks(hooks: &mut ComponentHooks) {
         hooks.on_remove(match R::CLEANUP_POLICY {
-            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
             CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+            _ => return,
+        });
+    }
+}
+
+/// Marker component used to manage the cleanup of Orphan and Counted relations when an entity is despawned.
+#[derive(Reflect)]
+pub(crate) struct RelationDespawnMarker<R: Relation>(PhantomData<R>);
+impl<R: Relation> Component for RelationDespawnMarker<R> {
+    const STORAGE_TYPE: StorageType = StorageType::Table;
+    fn register_component_hooks(hooks: &mut ComponentHooks) {
+        hooks.on_remove(match R::CLEANUP_POLICY {
+            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
+            _ => return,
         });
     }
 }
@@ -216,8 +226,8 @@ impl<R: Relation> Component for Targets<R> {
     const STORAGE_TYPE: StorageType = StorageType::Table;
     fn register_component_hooks(hooks: &mut ComponentHooks) {
         hooks.on_remove(match R::CLEANUP_POLICY {
-            CleanupPolicy::Orphan | CleanupPolicy::Counted => unset_edges::<R>,
             CleanupPolicy::Recursive | CleanupPolicy::Total => clean_recursive::<R>,
+            _ => return,
         });
     }
 }
@@ -421,6 +431,9 @@ where
             let mut new_host_targets = Targets::<R>::default();
             new_host_targets.add(self.target);
             host_entity.insert(new_host_targets);
+            if R::CLEANUP_POLICY == CleanupPolicy::Orphan || R::CLEANUP_POLICY == CleanupPolicy::Counted {
+                host_entity.insert(RelationDespawnMarker::<R>(PhantomData));
+            }
         }
 
         let mut target_entity = world.entity_mut(self.target);
@@ -436,6 +449,9 @@ where
             let mut new_target_hosts = Hosts::<R>::default();
             new_target_hosts.vec.add(self.host);
             target_entity.insert(new_target_hosts);
+            if R::CLEANUP_POLICY == CleanupPolicy::Orphan || R::CLEANUP_POLICY == CleanupPolicy::Counted {
+                target_entity.insert(RelationDespawnMarker::<R>(PhantomData));
+            }
         }
 
         world.trigger_targets(
@@ -538,33 +554,25 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
             .map(|mut edges| std::mem::take(&mut *edges))
             .unwrap_or_default();
 
-        let target_has_host_as_target = if let Some(targets) = world.get::<Targets<R>>(self.target)
-        {
-            targets.vec.vec.contains(&self.host)
-        } else {
-            false
-        };
-
         // Remove edges from containers
-        let target_removed_from_host = host_targets.remove(self.target);
+        host_targets.remove(self.target);
+        target_hosts.remove(self.host);
 
-        let host_removed_from_target = target_hosts.remove(self.host);
-
-        let mut host_entity_exists_in_world = false;
+        let mut host_exists = false;
 
         if !host_targets.vec.vec.is_empty() {
             world.entity_mut(self.host).insert(host_targets);
-            host_entity_exists_in_world = true;
+            host_exists = true;
         } else if let Ok(mut host) = world.get_entity_mut(self.host) {
-            host_entity_exists_in_world = true;
+            host_exists = true;
             host.remove::<Targets<R>>();
         }
 
-        let mut target_entity_exists_in_world = false;
+        let mut target_exists = false;
 
         if !target_hosts.vec.vec.is_empty() {
             world.entity_mut(self.target).insert(target_hosts);
-            target_entity_exists_in_world = true;
+            target_exists = true;
         } else if matches!(
             R::CLEANUP_POLICY,
             CleanupPolicy::Counted | CleanupPolicy::Total
@@ -577,11 +585,11 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 world.despawn(self.target);
             }
         } else if let Ok(mut target) = world.get_entity_mut(self.target) {
-            target_entity_exists_in_world = true;
+            target_exists = true;
             target.remove::<Hosts<R>>();
         }
 
-        if target_removed_from_host && host_entity_exists_in_world {
+        if host_exists && target_exists {
             world.trigger_targets(
                 UnsetEvent::<R> {
                     target: self.target,
@@ -589,19 +597,6 @@ impl<R: Relation> Command for UnsetAsymmetric<R> {
                 },
                 self.host,
             );
-        }
-        // Need to check situation if !R::EXCLUSIVE - it is possible that the target also has us as target, so we need to send event
-        // to the target also
-        if host_removed_from_target && target_entity_exists_in_world {
-            if (R::SYMMETRIC && R::EXCLUSIVE) || (!R::EXCLUSIVE && target_has_host_as_target) {
-                world.trigger_targets(
-                    UnsetEvent::<R> {
-                        target: self.host,
-                        _phantom: PhantomData,
-                    },
-                    self.target,
-                );
-            }
         }
     }
 }
@@ -1392,6 +1387,14 @@ mod tests {
         world.entity_mut(entity_a).unset::<R>(entity_b);
         world.flush();
 
+        if set_both_ways {
+            assert!(
+                world.get::<Targets<R>>(entity_b).is_some(),
+                "Targets missing {}",
+                relation_name
+            );
+        }
+
         // Check counters
         let counter_a = world.get::<EventCounter>(entity_a).unwrap().0;
         let counter_b = world.get::<EventCounter>(entity_b).unwrap().0;
@@ -1421,9 +1424,11 @@ mod tests {
         // Test cases: (RelationType, set_both_ways, expected counters after unset)
         let test_cases = vec![
             (RelationType::Asymmetric, false, 1, 0),
+            (RelationType::Asymmetric, true, 1, 0),
             (RelationType::Symmetric, false, 1, 1),
-            (RelationType::Poly, true, 1, 1),
-            (RelationType::PolySymmetric, true, 1, 1),
+            (RelationType::Poly, false, 1, 0),
+            (RelationType::Poly, true, 1, 0),
+            (RelationType::PolySymmetric, false, 1, 1),
         ];
 
         for (relation_type, set_both_ways, expected_a, expected_b) in test_cases {
