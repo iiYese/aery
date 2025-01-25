@@ -1345,35 +1345,24 @@ mod tests {
         PolySymmetric,
     }
 
-    fn spawn_entities_with_event<R: Relation, E: Event>(
-        world: &mut World,
-        observe_event: bool,
-    ) -> (Entity, Entity) {
-        let entity_a = if observe_event {
-            world
-                .spawn(EventCounter(0))
-                .observe(
-                    |trigger: Trigger<E>, mut counters: Query<&mut EventCounter>| {
-                        counters.get_mut(trigger.entity()).unwrap().0 += 1;
-                    },
-                )
-                .id()
-        } else {
-            world.spawn(EventCounter(0)).id()
-        };
+    fn spawn_entities_with_event<R: Relation, E: Event>(world: &mut World) -> (Entity, Entity) {
+        let entity_a = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<E>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
 
-        let entity_b = if observe_event {
-            world
-                .spawn(EventCounter(0))
-                .observe(
-                    |trigger: Trigger<E>, mut counters: Query<&mut EventCounter>| {
-                        counters.get_mut(trigger.entity()).unwrap().0 += 1;
-                    },
-                )
-                .id()
-        } else {
-            world.spawn(EventCounter(0)).id()
-        };
+        let entity_b = world
+            .spawn(EventCounter(0))
+            .observe(
+                |trigger: Trigger<E>, mut counters: Query<&mut EventCounter>| {
+                    counters.get_mut(trigger.entity()).unwrap().0 += 1;
+                },
+            )
+            .id();
 
         world.flush();
         (entity_a, entity_b)
@@ -1388,7 +1377,7 @@ mod tests {
         expected_counter_b: i32,
         despawn_target: bool,
     ) {
-        let (entity_a, entity_b) = spawn_entities_with_event::<R, UnsetEvent<R>>(world, true);
+        let (entity_a, entity_b) = spawn_entities_with_event::<R, UnsetEvent<R>>(world);
         let relation_name = type_name::<R>();
 
         // Set relationship(s)
@@ -1421,9 +1410,7 @@ mod tests {
         assert_eq!(
             counter_a, expected_counter_a,
             "{}: Unexpected counter value for entity_a (set_both_ways = {}, despawn_target = {})",
-            relation_name,
-            set_both_ways,
-            despawn_target
+            relation_name, set_both_ways, despawn_target
         );
     }
 
@@ -1492,7 +1479,7 @@ mod tests {
         expected_counter_a: i32,
         expected_counter_b: i32,
     ) {
-        let (entity_a, entity_b) = spawn_entities_with_event::<R, SetEvent<R>>(world, true);
+        let (entity_a, entity_b) = spawn_entities_with_event::<R, SetEvent<R>>(world);
         let relation_name = type_name::<R>();
 
         // Set relationship(s)
