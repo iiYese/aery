@@ -1422,7 +1422,7 @@ mod tests {
         world.register_relation::<PolyRelation>();
         world.register_relation::<PolySymmetricRelation>();
 
-        // (RelationType, set_both_ways, expected_counter_a, despawn_target)
+        // (RelationType, set_both_ways, expected_counter_a, expected_counter_b, despawn_target)
         let test_cases = vec![
             (RelationType::Asymmetric, false, 1, 0, false),
             (RelationType::Asymmetric, true, 1, 1, false),
